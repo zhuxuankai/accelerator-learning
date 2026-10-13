@@ -141,6 +141,14 @@ def next_monday(today: dt.date) -> dt.date:
     return today + dt.timedelta(days=(7 - today.weekday()) % 7 or 7)
 
 
+def this_monday(today: dt.date) -> dt.date:
+    return today - dt.timedelta(days=today.weekday())
+
+
+def plan_path(monday: dt.date) -> Path:
+    return PLAN_DIR / f"{monday.isoformat()}.md"
+
+
 def write_coverage(stats: dict, progress: list[dict]) -> None:
     lines = ["# 覆盖度报告", "", f"生成时间：{now_iso()}", "", "## 语料规模", ""]
     lines.append("| 目录 | 文档数 | 最新版 | 单元(页/张) | 索引块 | OCR 单元 |")
@@ -166,28 +174,30 @@ def write_coverage(stats: dict, progress: list[dict]) -> None:
     COVERAGE_MD.write_text("\n".join(lines), encoding="utf-8")
 
 
-def write_plan(today: dt.date, stats: dict, progress: list[dict]) -> Path:
+def write_plan(monday: dt.date, stats: dict, progress: list[dict]) -> Path:
+    """确保指定周（该周的周一）有一份计划；已存在则原样返回。"""
     PLAN_DIR.mkdir(parents=True, exist_ok=True)
-    monday = next_monday(today)
-    path = PLAN_DIR / f"{monday.isoformat()}.md"
+    path = plan_path(monday)
     if path.exists():
         return path
+    is_next = monday > this_monday(dt.date.today())
+    heading = "下周计划" if is_next else "本周计划"
     week_no = monday.isocalendar()[1]
     done = [r for r in progress if r.get("状态") == "已完成"]
     doing = [r for r in progress if r.get("状态") == "进行中"]
     inferred = [r for r in progress if r.get("来源") == "推断"]
     papers = pick_papers(4)
     lines = [
-        f"# 周计划 {monday.isoformat()}（第 {week_no} 周）",
+        f"# {heading} {monday.isoformat()}（第 {week_no} 周）",
         "",
         f"生成时间：{now_iso()}",
         "",
-        "## 上周复盘（待填）",
+        "## 上周复盘（待填）" if is_next else "## 本周进度（待回填）",
         "",
         f"- 已完成项：{'、'.join(r.get('名称', '') for r in done[-5:]) or '（待回填）'}",
         f"- 进行中：{'、'.join(r.get('名称', '') for r in doing) or '（无）'}",
         "",
-        "## 本周任务",
+        "## 任务清单" if not is_next else "## 本周任务",
         "",
         "### 论文",
         "",
@@ -230,8 +240,21 @@ def write_plan(today: dt.date, stats: dict, progress: list[dict]) -> Path:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-ingest", action="store_true")
+    ap.add_argument("--show", action="store_true", help="只打印本周任务清单，不做任何维护动作")
     args = ap.parse_args()
     load_config()
+
+    if args.show:
+        monday = this_monday(dt.date.today())
+        path = plan_path(monday)
+        if not path.exists():
+            stats = db_stats()
+            progress = read_progress()
+            path = write_plan(monday, stats, progress)
+        print(f"# 本周计划文件：{path.relative_to(WS)}")
+        print()
+        print(path.read_text(encoding="utf-8"))
+        return
 
     ingest_log = "" if args.no_ingest else run_ingest()
     manifest = read_json(KB / "manifest.json", {"files": {}})
@@ -245,7 +268,9 @@ def main() -> None:
     progress = read_progress()
     write_coverage(stats, progress)
     DASHBOARD.write_text(render_dashboard(stats, progress, new_files, now_iso()), encoding="utf-8")
-    plan = write_plan(dt.date.today(), stats, progress)
+    today = dt.date.today()
+    plan_this = write_plan(this_monday(today), stats, progress)
+    plan_next = write_plan(next_monday(today), stats, progress)
 
     today_iso = dt.date.today().isoformat()
     overdue = [
@@ -263,7 +288,8 @@ def main() -> None:
         tail = [ln for ln in ingest_log.strip().splitlines() if ln.strip()]
         print("入库：" + " / ".join(tail[-2:]))
     print(f"索引块总数：{stats['total_chunks']}；文档数：{len(stats['docs'])}")
-    print(f"本周计划文件：{plan.relative_to(WS)}")
+    print(f"本周任务清单：{plan_this.relative_to(WS)}")
+    print(f"下周计划：    {plan_next.relative_to(WS)}")
     print(f"逾期任务：{len(overdue)}　待确认进度项：{len(inferred)}")
     for row in overdue[:5]:
         print(f"  - 逾期：{row.get('名称', '')}（计划 {row.get('计划完成')}）")

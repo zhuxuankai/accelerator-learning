@@ -38,6 +38,12 @@ def main() -> None:
         print(f"  - {row['course']}：{row['c']} 份（最新版）")
     print(f"文献目录 PDF：{papers} 篇")
     print(f"进度：{done}/{total} 项已完成")
+    import datetime as _dt
+
+    today = _dt.date.today()
+    monday = today - _dt.timedelta(days=today.weekday())
+    plan = ROADMAP / "周计划" / f"{monday.isoformat()}.md"
+    print("本周任务清单：" + (str(plan.relative_to(WS)) if plan.exists() else "（尚未生成，运行 run.ps1 plan）"))
 
 
 if __name__ == "__main__":

@@ -7,11 +7,12 @@
   run.ps1 weekly  [-NoIngest]
   run.ps1 ocr     -Doc <相对路径> -Pages 5-6    （或 -Pilot）
   run.ps1 eval    [命中判据 top-N，默认 3]
+  run.ps1 plan    [查看本周任务清单，不做任何维护动作]
   run.ps1 status
 #>
 param(
   [Parameter(Position = 0, Mandatory = $true)]
-  [ValidateSet('ingest', 'query', 'papers', 'weekly', 'ocr', 'eval', 'status')]
+  [ValidateSet('ingest', 'query', 'papers', 'weekly', 'plan', 'ocr', 'eval', 'status')]
   [string]$Command,
 
   [Parameter(Position = 1, ValueFromRemainingArguments = $true)]
@@ -67,6 +68,7 @@ $switches = @{
   weekly = @{ '-NoIngest' = '--no-ingest' }
   ocr    = @{ '-Doc' = '--doc'; '-Pages' = '--pages'; '-Pilot' = '--pilot' }
   eval   = @{}
+  plan   = @{}
   status = @{}
 }
 
@@ -77,6 +79,7 @@ $script = switch ($Command) {
   'weekly' { Join-Path $Tools 'weekly.py' }
   'ocr'    { Join-Path $Tools 'ocr_pdf.py' }
   'eval'   { Join-Path $Tools 'eval_retrieval.py' }
+  'plan'   { Join-Path $Tools 'weekly.py' }
   'status' { Join-Path $Tools 'status.py' }
 }
 
@@ -97,6 +100,8 @@ if ($Command -eq 'query') {
 foreach ($item in $items) {
   if ($map.ContainsKey($item)) { $pyArgs += $map[$item] } else { $pyArgs += $item }
 }
+
+if ($Command -eq 'plan' -and $pyArgs -notcontains '--show') { $pyArgs += '--show' }
 
 & $PY $script @pyArgs
 exit $LASTEXITCODE

@@ -42,11 +42,12 @@ AGENTS.md                  本工作区给 Codex 的行为规则
 
 ```powershell
 .\tools\run.ps1 status                              # 看知识库与进度概况
+.\tools\run.ps1 plan                                # 查看本周任务清单（只读，不改任何文件）
 .\tools\run.ps1 query "BPM 怎么测横向位置" -K 5      # 检索，返回带出处的 JSON
 .\tools\run.ps1 query "分流阻抗" -Course 直线加速器    # 限定课程
 .\tools\run.ps1 ingest                             # 增量入库（新课件丢进课程目录后执行）
 .\tools\run.ps1 papers                             # 生成论文候选清单（默认不下载）
-.\tools\run.ps1 weekly                             # 每周维护：入库→覆盖度→看板→下周计划
+.\tools\run.ps1 weekly                             # 每周维护：入库→覆盖度→看板→本周与下周计划
 ```
 
 检索回归测试（默认看 top-3 命中率）：
