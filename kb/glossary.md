@@ -1,0 +1,51 @@
+# 术语表（检索扩展用）
+
+每行一组同义词，用 `|` 分隔，中英文与缩写放同一行。修改后立即生效，无需重建索引。
+
+- 束流位置探测器 | BPM | beam position monitor | 束流位置测量
+- 束流 | beam | 电子束
+- 波荡器 | 摇摆器 | undulator | wiggler
+- 自由电子激光 | FEL | free-electron laser | free electron laser
+- 自放大自发辐射 | SASE | self-amplified spontaneous emission
+- 高增益谐波产生 | HGHG | high-gain harmonic generation
+- 回声谐波产生 | EEHG | echo-enabled harmonic generation | 束流回波
+- 增强型自放大自发辐射 | ESASE | enhanced SASE
+- 自种子 | self-seeding
+- 锁模 | mode locking | mode-locked
+- 光频梳 | frequency comb | 频率梳
+- 微聚束 | microbunching | 微聚束不稳定性 | microbunching instability
+- 发射度 | emittance | 横向发射度
+- 能散 | energy spread | 能量散度
+- 色散函数 | dispersion | 动量色散
+- 贝塔函数 | beta function | β函数 | 包络函数
+- 束流包络 | beam envelope | 包络振荡
+- 束团长度 | bunch length | 脉冲长度
+- 流强 | current | beam current
+- 电荷量 | charge | 束团电荷
+- 直流电流互感器 | DCCT | DC current transformer
+- 传输线 | transmission line
+- 行波 | traveling wave | travelling wave
+- 驻波 | standing wave
+- 分流阻抗 | shunt impedance | 分路阻抗
+- 射频 | RF | radio frequency
+- 速调管 | klystron
+- 光阴极注入器 | photoinjector | 注入器 | injector
+- 直线加速器 | linac | linear accelerator | 电子直线加速器
+- 同步辐射 | synchrotron radiation | 同步光
+- 亮度 | brightness | 光谱亮度
+- 通量 | flux | 光子通量
+- 临界波长 | critical wavelength | 临界能量
+- 束线光学 | beamline optics | 光束线
+- 储存环 | storage ring
+- 相干光源 | coherent light source | 全相干光源
+- 能量回收直线加速器 | ERL | energy recovery linac
+- 阿秒 | attosecond
+- 少周期 | few-cycle
+- 太赫兹 | THz | terahertz
+- 轨道角动量 | OAM | orbital angular momentum
+- 渡越辐射 | transition radiation
+- 四极磁铁 | quadrupole
+- 二极磁铁 | dipole | 偏转磁铁
+- 空间电荷 | space charge
+- 相干同步辐射 | CSR | coherent synchrotron radiation
+- 增益长度 | gain length | 饱和功率

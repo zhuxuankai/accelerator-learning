@@ -1,0 +1,50 @@
+# ===== 语料：课程课件与论文（版权 + 体积原因不入库）=====
+/加速器束流诊断/
+/加速器原理概论/
+/束线光学/
+/直线加速器/
+/文献/
+
+# ===== 本地索引与中间产物（可随时重建）=====
+/kb/kb.sqlite
+/kb/kb.sqlite-*
+/kb/manifest.json
+/kb/extracted/
+/kb/ocr/
+/kb/tools/tessdata/
+/kb/*.log
+
+# ===== 个人数据：只留在本地，不进公开仓库 =====
+# 模板见同目录下的 *.example.*
+/kb/config.json
+/kb/papers/
+/学习路线/学习路线.md
+/学习路线/进度追踪.csv
+/学习路线/覆盖度.md
+/学习路线/dashboard.html
+/学习路线/周计划/
+/个人/
+
+# 课件/数据类二进制兜底：不论目录叫什么，都不让大文件进库
+*.pdf
+*.pptx
+*.docx
+*.mat
+*.zip
+*.rar
+
+# 课件/数据类二进制兜底：不论目录叫什么，都不让大文件进库
+*.pdf
+*.pptx
+*.docx
+*.mat
+*.zip
+*.rar
+
+# ===== 系统杂项 =====
+__pycache__/
+*.pyc
+*.tmp
+Thumbs.db
+desktop.ini
+~$*

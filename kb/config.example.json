@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "include_dirs": ["课程一", "课程二", "文献"],
+  "exclude": ["kb", "tools", "学习路线"],
+  "ocr": {
+    "dpi": 220,
+    "workers": 3,
+    "batch": 24,
+    "sparse_char_threshold": 40,
+    "full_image_ratio": 0.8
+  },
+  "index": {"max_chars": 800, "overlap": 100},
+  "papers": {
+    "inspire_author_recid": null,
+    "openalex_author_id": "",
+    "since_year": 2020,
+    "mailto": "your-email@example.com",
+    "target_count": 70,
+    "coauthors": ["Author One", "Author Two"],
+    "topic_keywords": ["free-electron laser", "SASE", "seeded", "undulator", "beam diagnos", "emittance", "linac", "storage ring", "synchrotron radiation"],
+    "classics": [
+      {"title": "填一篇你领域的奠基文献的完整标题", "note": "为什么必读"},
+      {"title": "再填一篇经典综述的完整标题", "note": ""}
+    ]
+  }
+}
