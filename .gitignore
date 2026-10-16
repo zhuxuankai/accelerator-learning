@@ -11,6 +11,7 @@
 /kb/manifest.json
 /kb/extracted/
 /kb/ocr/
+/kb/work/
 /kb/tools/tessdata/
 /kb/*.log
 

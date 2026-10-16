@@ -653,6 +653,7 @@ def main() -> None:
     if args.write:
         got, pending = download_all(cands)
         print(f"\n已下载 {len(got)} 篇到 文献/，待获取 {len(pending)} 篇（见 {PENDING_LIST.relative_to(WS)}）")
+        print("提示：英文论文需要生成中文译本，用 `run.ps1 translate -List` 看清单")
     else:
         print("\n（dry-run：未下载。确认后加 --write）")
 

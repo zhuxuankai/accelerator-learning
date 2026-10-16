@@ -8,11 +8,12 @@
   run.ps1 ocr     -Doc <相对路径> -Pages 5-6    （或 -Pilot）
   run.ps1 eval    [命中判据 top-N，默认 3]
   run.ps1 plan    [查看本周任务清单，不做任何维护动作]
+  run.ps1 translate [-List | -Status | -Prepare <文件>]
   run.ps1 status
 #>
 param(
   [Parameter(Position = 0, Mandatory = $true)]
-  [ValidateSet('ingest', 'query', 'papers', 'weekly', 'plan', 'ocr', 'eval', 'status')]
+  [ValidateSet('ingest', 'query', 'papers', 'weekly', 'plan', 'translate', 'ocr', 'eval', 'status')]
   [string]$Command,
 
   [Parameter(Position = 1, ValueFromRemainingArguments = $true)]
@@ -69,6 +70,7 @@ $switches = @{
   ocr    = @{ '-Doc' = '--doc'; '-Pages' = '--pages'; '-Pilot' = '--pilot' }
   eval   = @{}
   plan   = @{}
+  translate = @{ '-List' = '--list'; '-Status' = '--status'; '-Prepare' = '--prepare' }
   status = @{}
 }
 
@@ -80,6 +82,7 @@ $script = switch ($Command) {
   'ocr'    { Join-Path $Tools 'ocr_pdf.py' }
   'eval'   { Join-Path $Tools 'eval_retrieval.py' }
   'plan'   { Join-Path $Tools 'weekly.py' }
+  'translate' { Join-Path $Tools 'translate_paper.py' }
   'status' { Join-Path $Tools 'status.py' }
 }
 

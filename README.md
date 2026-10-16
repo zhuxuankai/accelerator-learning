@@ -47,6 +47,7 @@ AGENTS.md                  本工作区给 Codex 的行为规则
 .\tools\run.ps1 query "分流阻抗" -Course 直线加速器    # 限定课程
 .\tools\run.ps1 ingest                             # 增量入库（新课件丢进课程目录后执行）
 .\tools\run.ps1 papers                             # 生成论文候选清单（默认不下载）
+.\tools\run.ps1 translate -List                    # 看哪些英文论文还没中文译本
 .\tools\run.ps1 weekly                             # 每周维护：入库→覆盖度→看板→本周与下周计划
 ```
 
@@ -73,6 +74,18 @@ AGENTS.md                  本工作区给 Codex 的行为规则
 每周五 21:00 有一条 heartbeat 自动化「每周学习路线维护」挂在本仓库对应的对话上，动作是
 `run.ps1 weekly`，然后汇报：新增语料、下周读的两篇论文、下周仿真任务、课程薄弱点。
 无变化时保持静默。
+
+## 英文论文中译
+
+英文论文配一份中文译本（默认开启，可用 `kb/config.json` 的 `translate.enabled` 关掉）：
+
+- `run.ps1 translate -List` 列出待译论文并刷新 `kb/papers/待翻译.md`；
+- `run.ps1 translate -Prepare "文献/<文件>.pdf"` 抽出带页码标记的工作文件（写到 `kb/work/`，
+  属于中间产物，不参与索引）；
+- 译本写到 `文献/译文/<同名>.zh.md`：中文标题 + 原文信息 + 逐节译文 + 图表标题翻译，
+  公式保留 LaTeX，术语首次出现附英文；
+- 译本开头维护 `<!-- 已译页: n-m / N -->`，长论文可跨多次分批续译；
+- 译本本身在语料目录内，会被一起索引，所以中文提问可以直接命中译文。
 
 ## 进度回填纪律
 

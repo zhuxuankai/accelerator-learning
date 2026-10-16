@@ -10,6 +10,13 @@
     "full_image_ratio": 0.8
   },
   "index": {"max_chars": 800, "overlap": 100},
+  "translate": {
+    "enabled": true,
+    "out_dir": "文献/译文",
+    "style": "full",
+    "keep_equations": true,
+    "term_style": "术语首次出现附英文"
+  },
   "papers": {
     "inspire_author_recid": null,
     "openalex_author_id": "",
