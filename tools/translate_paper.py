@@ -59,6 +59,8 @@ def progress(md: Path) -> str:
     if not md.exists():
         return "未开始"
     text = md.read_text(encoding="utf-8")
+    if re.search(r"译本状态:\s*完成", text):
+        return "已完成"
     m = re.search(r"<!--\s*已译页:\s*([\d\-,\s]+)/\s*(\d+)\s*-->", text)
     if m:
         return f"进行中 {m.group(1).strip()}/{m.group(2)} 页"
