@@ -15,7 +15,8 @@
     "out_dir": "文献/译文",
     "style": "full",
     "keep_equations": true,
-    "term_style": "术语首次出现附英文"
+    "term_style": "术语首次出现附英文",
+    "review_after": true
   },
   "papers": {
     "inspire_author_recid": null,

@@ -8,7 +8,7 @@
   run.ps1 ocr     -Doc <相对路径> -Pages 5-6    （或 -Pilot）
   run.ps1 eval    [命中判据 top-N，默认 3]
   run.ps1 plan    [查看本周任务清单，不做任何维护动作]
-  run.ps1 translate [-List | -Status | -Prepare <文件>]
+  run.ps1 translate [-List | -Status | -Audit | -Prepare <文件>]
   run.ps1 status
 #>
 param(
@@ -70,7 +70,7 @@ $switches = @{
   ocr    = @{ '-Doc' = '--doc'; '-Pages' = '--pages'; '-Pilot' = '--pilot' }
   eval   = @{}
   plan   = @{}
-  translate = @{ '-List' = '--list'; '-Status' = '--status'; '-Prepare' = '--prepare' }
+  translate = @{ '-List' = '--list'; '-Status' = '--status'; '-Audit' = '--audit'; '-Prepare' = '--prepare' }
   status = @{}
 }
 

@@ -67,6 +67,69 @@ def progress(md: Path) -> str:
     return "已完成"
 
 
+PAGE_MARK = re.compile(r"<!--\s*p(\d+)\s*-->")
+PLACEHOLDER = re.compile(r"待续译|待补|待填|TODO|FIXME|待翻译")
+
+
+def audit_one(pdf: Path, md: Path) -> dict:
+    """检查译本是否逐页覆盖了原文，且没有残留占位符。"""
+    result = {
+        "paper": pdf.relative_to(WS).as_posix(),
+        "translation": md.relative_to(WS).as_posix() if md.exists() else "",
+        "pages": 0,
+        "marked": [],
+        "missing": [],
+        "placeholders": [],
+        "has_marker_header": False,
+    }
+    if not md.exists():
+        result["missing"] = ["（译本不存在）"]
+        return result
+
+    text = md.read_text(encoding="utf-8")
+    result["pages"] = len(extract_pages(pdf))
+    result["marked"] = sorted({int(m.group(1)) for m in PAGE_MARK.finditer(text)})
+    result["has_marker_header"] = bool(re.search(r"已译页:", text))
+    for i, line in enumerate(text.splitlines(), 1):
+        if PLACEHOLDER.search(line):
+            result["placeholders"].append(f"{i}: {line.strip()[:80]}")
+
+    if result["marked"]:
+        covered = set(result["marked"])
+        result["missing"] = [p for p in range(1, result["pages"] + 1) if p not in covered]
+    else:
+        result["missing"] = ["（没有任何页锚点 <!-- pN -->）"]
+    return result
+
+
+def run_audit(cfg: dict) -> int:
+    print("逐页覆盖审计（译本必须为原文每一页提供锚点 <!-- pN -->）\n")
+    problems = 0
+    for pdf in paper_files():
+        pages = extract_pages(pdf)
+        if not is_english(pages):
+            continue
+        md = translation_path(cfg, pdf)
+        info = audit_one(pdf, md)
+        if not md.exists():
+            print(f"[未译] {info['paper']}")
+            problems += 1
+            continue
+        status = "OK  " if not info["missing"] and not info["placeholders"] else "问题"
+        print(f"[{status}] {info['paper']}")
+        print(f"        原文 {info['pages']} 页；已锚定 {len(info['marked'])} 页"
+              f"{'；页头已声明 已译页' if info['has_marker_header'] else '；⚠ 页头缺 已译页 声明'}")
+        if info["missing"]:
+            problems += 1
+            print(f"        ✗ 缺页或无可核对锚点：{info['missing']}")
+        if info["placeholders"]:
+            problems += 1
+            print(f"        ✗ 残留占位符：{info['placeholders']}")
+    print()
+    print("结论：" + ("全部通过，无缺页、无占位符" if problems == 0 else f"发现 {problems} 处问题，必须修完再算完成"))
+    return 1 if problems else 0
+
+
 def write_queue(cfg: dict) -> list[tuple[Path, str]]:
     rows = []
     for pdf in paper_files():
@@ -128,7 +191,11 @@ def main() -> None:
     ap.add_argument("--list", action="store_true", help="列出待翻译的英文论文")
     ap.add_argument("--status", action="store_true", help="显示每篇的译本进度")
     ap.add_argument("--prepare", help="抽出指定 PDF 的工作文件（带页码标记）")
+    ap.add_argument("--audit", action="store_true", help="审计每篇译本是否逐页覆盖、有无占位符")
     args = ap.parse_args()
+
+    if args.audit:
+        raise SystemExit(run_audit(cfg))
 
     if args.prepare:
         target = prepare(cfg, args.prepare)
