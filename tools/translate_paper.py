@@ -69,6 +69,50 @@ def progress(md: Path) -> str:
 
 PAGE_MARK = re.compile(r"<!--\s*p(\d+)\s*-->")
 PLACEHOLDER = re.compile(r"待续译|待补|待填|TODO|FIXME|待翻译")
+MATH_BLOCK = re.compile(r"\$\$(.+?)\$\$", re.S)
+MATH_INLINE = re.compile(r"(?<!\$)\$([^$\n]+)\$(?!\$)")
+CJK_CHAR = re.compile(r"[\u4e00-\u9fff]")
+
+
+def _math_segment_issues(seg: str, kind: str) -> list[str]:
+    out: list[str] = []
+    depth = 0
+    for ch in seg:
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth < 0:
+                out.append(f"{kind}：多余的右花括号")
+                depth = 0
+    if depth:
+        out.append(f"{kind}：缺少 {depth} 个右花括号")
+    if len(re.findall(r"\\left", seg)) != len(re.findall(r"\\right", seg)):
+        out.append(f"{kind}：\\left / \\right 不配对")
+    if "\\tag" in seg:
+        out.append(f"{kind}：使用了 \\tag（KaTeX 不支持）")
+    if CJK_CHAR.search(seg):
+        out.append(f"{kind}：数学模式里出现中文（KaTeX 没有 CJK 字形）")
+    if "\\text{" in seg and CJK_CHAR.search(seg):
+        out.append(f"{kind}：\\text{{}} 内含中文")
+    return out
+
+
+def math_issues(text: str) -> list[str]:
+    """检查 LaTeX 是否可被 KaTeX 正常渲染。"""
+    body = re.sub(r"```.*?```", "", text, flags=re.S)
+    issues: list[str] = []
+    if body.count("$$") % 2:
+        issues.append("$$ 数量为奇数，块公式未闭合")
+    for m in MATH_BLOCK.finditer(body):
+        issues.extend(_math_segment_issues(m.group(1), "块公式"))
+    stripped = MATH_BLOCK.sub("", body)
+    for no, line in enumerate(stripped.splitlines(), 1):
+        if line.count("$") % 2:
+            issues.append(f"第 {no} 行：行内 $ 数量为奇数")
+    for m in MATH_INLINE.finditer(stripped):
+        issues.extend(_math_segment_issues(m.group(1), "行内公式"))
+    return issues
 
 
 def audit_one(pdf: Path, md: Path) -> dict:
@@ -80,6 +124,7 @@ def audit_one(pdf: Path, md: Path) -> dict:
         "marked": [],
         "missing": [],
         "placeholders": [],
+        "math": [],
         "has_marker_header": False,
     }
     if not md.exists():
@@ -93,6 +138,7 @@ def audit_one(pdf: Path, md: Path) -> dict:
     for i, line in enumerate(text.splitlines(), 1):
         if PLACEHOLDER.search(line):
             result["placeholders"].append(f"{i}: {line.strip()[:80]}")
+    result["math"] = math_issues(text)
 
     if result["marked"]:
         covered = set(result["marked"])
@@ -115,7 +161,7 @@ def run_audit(cfg: dict) -> int:
             print(f"[未译] {info['paper']}")
             problems += 1
             continue
-        status = "OK  " if not info["missing"] and not info["placeholders"] else "问题"
+        status = "OK  " if not info["missing"] and not info["placeholders"] and not info["math"] else "问题"
         print(f"[{status}] {info['paper']}")
         print(f"        原文 {info['pages']} 页；已锚定 {len(info['marked'])} 页"
               f"{'；页头已声明 已译页' if info['has_marker_header'] else '；⚠ 页头缺 已译页 声明'}")
@@ -125,8 +171,13 @@ def run_audit(cfg: dict) -> int:
         if info["placeholders"]:
             problems += 1
             print(f"        ✗ 残留占位符：{info['placeholders']}")
+        if info["math"]:
+            problems += 1
+            for item in info["math"][:6]:
+                print(f"        ✗ 公式：{item}")
     print()
-    print("结论：" + ("全部通过，无缺页、无占位符" if problems == 0 else f"发现 {problems} 处问题，必须修完再算完成"))
+    print("结论：" + ("全部通过：无缺页、无占位符、公式可渲染"
+                      if problems == 0 else f"发现 {problems} 处问题，必须修完再算完成"))
     return 1 if problems else 0
 
 
