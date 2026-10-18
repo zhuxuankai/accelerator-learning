@@ -10,6 +10,15 @@
     "full_image_ratio": 0.8
   },
   "index": {"max_chars": 800, "overlap": 100},
+  "reading": {
+    "stage": "foundation",
+    "close_per_week": 1,
+    "skim_per_week": 1,
+    "review_bonus": 6.0,
+    "group_bonus": 1.0,
+    "classic_bonus": 2.0,
+    "focus_keywords": ["free-electron laser", "undulator", "beam dynamics", "emittance", "accelerating structure"]
+  },
   "translate": {
     "enabled": true,
     "out_dir": "文献/译文",

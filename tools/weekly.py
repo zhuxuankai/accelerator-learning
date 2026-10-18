@@ -9,6 +9,7 @@ import argparse
 import csv
 import datetime as dt
 import json
+import math
 import os
 import re
 import subprocess
@@ -102,8 +103,57 @@ def assigned_papers() -> set[str]:
     return used
 
 
-def pick_papers(limit: int = 4) -> list[dict]:
-    """选本周要读的论文：先组内高引，再最老的经典，其余按引用补足。"""
+def db_pages_map() -> dict[str, int]:
+    conn = connect_db(readonly=True)
+    try:
+        return {r["rel_path"]: r["n_units"] or 0 for r in conn.execute("SELECT rel_path, n_units FROM docs")}
+    finally:
+        conn.close()
+
+
+def review_like(paper: dict) -> bool:
+    t = (paper.get("title") or "").lower()
+    return paper.get("source") == "review" or "review" in t or "overview" in t or "tutorial" in t
+
+
+def score_paper(paper: dict, cfg: dict, pages_map: dict[str, int]) -> tuple[float, str]:
+    """按"是否综述 / 组内 / 经典 / 主题相关 / 引用 / 篇幅"打分，并给出一行理由。"""
+    rc = cfg.get("reading", {})
+    stage = rc.get("stage", "foundation")
+    title = (paper.get("title") or "").lower()
+    blob = title + " " + (paper.get("abstract") or "").lower()
+    score = 0.0
+    reasons: list[str] = []
+
+    if review_like(paper):
+        score += float(rc.get("review_bonus", 6.0)) if stage == "foundation" else 2.0
+        reasons.append("综述，先建立框架")
+    elif paper.get("source") == "classic":
+        score += float(rc.get("classic_bonus", 2.0))
+        reasons.append("经典奠基")
+    else:
+        score += float(rc.get("group_bonus", 1.0))
+        reasons.append("组内工作")
+
+    hits = sum(1 for k in rc.get("focus_keywords", []) if k.lower() in blob)
+    score += min(hits, 5) * 0.8
+    score += math.log10(1 + float(paper.get("cited_by") or paper.get("citations") or 0))
+
+    pages = int(paper.get("pages") or pages_map.get(paper.get("local_pdf", ""), 0) or 0)
+    if pages:
+        if pages > 25:
+            score -= 2.5
+            reasons.append(f"{pages} 页偏长，建议分周读")
+        elif pages > 15:
+            score -= 1.0
+            reasons.append(f"{pages} 页较长")
+        else:
+            reasons.append(f"{pages} 页")
+    return score, "；".join(reasons[:4])
+
+
+def pick_papers(cfg: dict, close_n: int, skim_n: int) -> list[tuple[dict, str]]:
+    """按评分选本周论文；返回 [(论文, 选择理由)]。"""
     meta_path = KB / "papers" / "metadata.jsonl"
     if not meta_path.exists():
         return []
@@ -120,21 +170,13 @@ def pick_papers(limit: int = 4) -> list[dict]:
     fresh = [p for p in pool if p.get("local_pdf") and p["local_pdf"] not in used]
     if not fresh:
         fresh = [p for p in pool if p.get("local_pdf")]
-    classics = [p for p in fresh if p.get("source") == "classic"]
-    group = [p for p in fresh if p.get("source") != "classic"]
-
-    picks: list[dict] = []
-    if group:
-        picks.append(max(group, key=lambda p: p.get("cited_by", 0)))
-    if classics:
-        picks.append(min(classics, key=lambda p: p.get("year", 9999)))
-    for paper in sorted(fresh, key=lambda p: -p.get("cited_by", 0)):
-        if paper in picks:
-            continue
-        picks.append(paper)
-        if len(picks) >= limit:
-            break
-    return picks[:limit]
+    pages_map = db_pages_map()
+    scored = []
+    for paper in fresh:
+        s, why = score_paper(paper, cfg, pages_map)
+        scored.append((s, paper, why))
+    scored.sort(key=lambda x: -x[0])
+    return [(paper, why) for _, paper, why in scored[: close_n + skim_n]]
 
 
 def next_monday(today: dt.date) -> dt.date:
@@ -186,7 +228,11 @@ def write_plan(monday: dt.date, stats: dict, progress: list[dict]) -> Path:
     done = [r for r in progress if r.get("状态") == "已完成"]
     doing = [r for r in progress if r.get("状态") == "进行中"]
     inferred = [r for r in progress if r.get("来源") == "推断"]
-    papers = pick_papers(4)
+    cfg = load_config()
+    rc = cfg.get("reading", {})
+    close_n = int(rc.get("close_per_week", 1))
+    skim_n = int(rc.get("skim_per_week", 1))
+    papers = pick_papers(cfg, close_n, skim_n)
     lines = [
         f"# {heading} {monday.isoformat()}（第 {week_no} 周）",
         "",
@@ -204,16 +250,21 @@ def write_plan(monday: dt.date, stats: dict, progress: list[dict]) -> Path:
     ]
     if papers:
         def label(paper: dict) -> str:
-            tag = "组内" if paper.get("source") != "classic" else "经典"
+            if review_like(paper):
+                tag = "综述"
+            elif paper.get("source") == "classic":
+                tag = "经典"
+            else:
+                tag = "组内"
             return (
                 f"[{tag}] {paper['title']}（{paper.get('journal') or 'preprint'}，"
                 f"{paper.get('year')}，引用 {paper.get('cited_by', 0)}）`{paper['local_pdf']}`"
             )
 
-        for i, item in enumerate(papers[:2], 1):
-            lines.append(f"- [ ] 精读 {i}：{label(item)}")
-        for item in papers[2:4]:
-            lines.append(f"- [ ] 泛读：{label(item)}")
+        for i, (item, why) in enumerate(papers[:close_n], 1):
+            lines.append(f"- [ ] 精读 {i}：{label(item)}　← {why}")
+        for item, why in papers[close_n : close_n + skim_n]:
+            lines.append(f"- [ ] 泛读：{label(item)}　← {why}")
     else:
         lines.append("- [ ] 论文语料尚未下载：先跑 `run.ps1 papers` 并确认候选清单")
     lines += ["", "### 仿真", "", "- [ ] （按阶段填写：ELEGANT / SRW / GENESIS）", "", "### 课程复习", ""]
