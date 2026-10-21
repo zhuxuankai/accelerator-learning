@@ -87,7 +87,7 @@ def _math_segment_issues(seg: str, kind: str) -> list[str]:
                 depth = 0
     if depth:
         out.append(f"{kind}：缺少 {depth} 个右花括号")
-    if len(re.findall(r"\\left", seg)) != len(re.findall(r"\\right", seg)):
+    if len(re.findall(r"\\left(?![a-zA-Z])", seg)) != len(re.findall(r"\\right(?![a-zA-Z])", seg)):
         out.append(f"{kind}：\\left / \\right 不配对")
     if "\\tag" in seg:
         out.append(f"{kind}：使用了 \\tag（KaTeX 不支持）")
