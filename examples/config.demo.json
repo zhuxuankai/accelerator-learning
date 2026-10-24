@@ -4,5 +4,9 @@
   "exclude": ["kb", "学习路线"],
   "index": {
     "embedding_model": "intfloat/multilingual-e5-small"
+  },
+  "weekly": {
+    "eval_suite": "demo",
+    "eval_split": "dev"
   }
 }

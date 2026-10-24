@@ -44,6 +44,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "weekly": {
         "eval_required": True,
+        "eval_suite": "local",
+        "eval_split": "dev",
         "max_review_candidates": 1,
     },
 }

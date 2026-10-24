@@ -29,6 +29,8 @@
   },
   "weekly": {
     "eval_required": true,
+    "eval_suite": "local",
+    "eval_split": "dev",
     "max_review_candidates": 1
   },
   "translate": {

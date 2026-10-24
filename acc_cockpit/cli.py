@@ -223,9 +223,11 @@ def main(argv: list[str] | None = None) -> int:
             eval_error = None
             if not args.skip_eval:
                 try:
+                    weekly_cfg = load_config(root)[0].get("weekly", {})
                     eval_result = evaluate(
                         root,
-                        suite="local",
+                        suite=str(weekly_cfg.get("eval_suite", "local")),
+                        split=str(weekly_cfg.get("eval_split", "dev")),
                         baseline="hybrid",
                         mock_embedding=args.mock_embedding,
                     )
