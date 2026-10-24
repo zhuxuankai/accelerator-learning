@@ -1,19 +1,19 @@
 <#
-  加速器学习驾驶舱 · 统一入口
+  加速器学习驾驶舱 v2
 
-  run.ps1 ingest  [-Full] [-Only <相对路径>] [-NoOcr]
-  run.ps1 query   "<问题>" [-Course <目录>] [-Kind slide|book|paper|doc] [-K 8] [-AllVersions] [-FullText]
-  run.ps1 papers  [-DryRun | -Write]
-  run.ps1 weekly  [-NoIngest]
-  run.ps1 ocr     -Doc <相对路径> -Pages 5-6    （或 -Pilot）
-  run.ps1 eval    [命中判据 top-N，默认 3]
-  run.ps1 plan    [查看本周任务清单，不做任何维护动作]
-  run.ps1 translate [-List | -Status | -Audit | -Prepare <文件>]
+  run.ps1 doctor
+  run.ps1 index   [-Full] [-Only <相对路径>] [-MockEmbedding]
+  run.ps1 query   "<问题>" [-Course <目录>] [-Kind slide|book|paper|doc] [-K 8] [-AllVersions] [-Mode hybrid]
+  run.ps1 eval    [-Suite demo|local] [-Split dev|heldout] [-Baseline lexical|vector|hybrid]
+  run.ps1 weekly  [-NoIndex] [-SkipEval]
+  run.ps1 progress list|suggest|confirm|reject ...
+  run.ps1 reading  list|confirm ...
+  run.ps1 papers  [-DryRun|-Write]
   run.ps1 status
 #>
 param(
   [Parameter(Position = 0, Mandatory = $true)]
-  [ValidateSet('ingest', 'query', 'papers', 'weekly', 'plan', 'translate', 'ocr', 'eval', 'status')]
+  [ValidateSet('doctor', 'index', 'query', 'eval', 'weekly', 'progress', 'reading', 'papers', 'status')]
   [string]$Command,
 
   [Parameter(Position = 1, ValueFromRemainingArguments = $true)]
@@ -25,86 +25,60 @@ $ErrorActionPreference = 'Stop'
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $env:PYTHONUTF8 = '1'
 $env:PYTHONUNBUFFERED = '1'
+$env:PYTHONDONTWRITEBYTECODE = '1'
 
-$Tools = $PSScriptRoot
+$Root = Split-Path -Parent $PSScriptRoot
 
-# 依次尝试：ACCKB_* 环境变量 -> Codex 自带运行时 -> 系统 PATH。换机器不用改代码。
-function Resolve-Tool {
-  param([string]$EnvVar, [string]$RuntimeRel, [string[]]$Commands)
-  if ($EnvVar) {
-    $value = [Environment]::GetEnvironmentVariable($EnvVar)
-    if ($value -and (Test-Path -LiteralPath $value)) { return $value }
+function Find-Python {
+  if ($env:ACCKB_PYTHON -and (Test-Path -LiteralPath $env:ACCKB_PYTHON)) {
+    return $env:ACCKB_PYTHON
   }
-  $roots = @()
-  if ($env:ACCKB_RUNTIME) { $roots += $env:ACCKB_RUNTIME }
-  $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE '.codex' }
-  $roots += (Join-Path (Split-Path -Parent $codexHome) '.cache\codex-runtimes\codex-primary-runtime\dependencies')
-  foreach ($root in $roots) {
-    if (-not $RuntimeRel) { continue }
-    $candidate = Join-Path $root $RuntimeRel
-    if (Test-Path -LiteralPath $candidate) { return $candidate }
-  }
-  foreach ($cmd in $Commands) {
-    $found = Get-Command $cmd -ErrorAction SilentlyContinue
+  $localVenv = Join-Path $Root '.venv\Scripts\python.exe'
+  if (Test-Path -LiteralPath $localVenv) { return $localVenv }
+  foreach ($name in @('python', 'python3')) {
+    $found = Get-Command $name -ErrorAction SilentlyContinue
     if ($found) { return $found.Source }
   }
-  return $null
-}
-
-$PY = Resolve-Tool -EnvVar 'ACCKB_PYTHON' -RuntimeRel 'python\python.exe' -Commands @('python', 'python3')
-if (-not $PY) {
-  throw '找不到 Python。请安装 Python 3.9+ 并加入 PATH，或设环境变量 ACCKB_PYTHON 指向解释器。'
-}
-
-if (-not $env:NODE_PATH) {
-  $nodeModules = Resolve-Tool -RuntimeRel 'node\node_modules' -Commands @()
-  if (-not $nodeModules) { $nodeModules = Resolve-Tool -EnvVar 'ACCKB_NODE_MODULES' -Commands @() }
-  if ($nodeModules) { $env:NODE_PATH = $nodeModules }
+  $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE '.codex' }
+  $runtime = Join-Path (Split-Path -Parent $codexHome) '.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe'
+  if (Test-Path -LiteralPath $runtime) { return $runtime }
+  throw '找不到 Python 3.10+。请创建 .venv、加入 PATH，或设置 ACCKB_PYTHON。'
 }
 
 $switches = @{
-  ingest = @{ '-Full' = '--full'; '-Only' = '--only'; '-NoOcr' = '--no-ocr' }
-  query  = @{ '-Course' = '--course'; '-Kind' = '--kind'; '-K' = '-k'; '-AllVersions' = '--all-versions'; '-FullText' = '--full-text' }
-  papers = @{ '-Write' = '--write'; '-DryRun' = '--dry-run'; '-Priorities' = '--priorities' }
-  weekly = @{ '-NoIngest' = '--no-ingest' }
-  ocr    = @{ '-Doc' = '--doc'; '-Pages' = '--pages'; '-Pilot' = '--pilot' }
-  eval   = @{}
-  plan   = @{}
-  translate = @{ '-List' = '--list'; '-Status' = '--status'; '-Audit' = '--audit'; '-Prepare' = '--prepare' }
-  status = @{}
+  index    = @{ '-Full' = '--full'; '-Only' = '--only'; '-MockEmbedding' = '--mock-embedding' }
+  query    = @{ '-Course' = '--course'; '-Kind' = '--kind'; '-K' = '-k'; '-AllVersions' = '--all-versions'; '-Mode' = '--mode'; '-MockEmbedding' = '--mock-embedding' }
+  eval     = @{ '-Suite' = '--suite'; '-Split' = '--split'; '-Baseline' = '--baseline'; '-MockEmbedding' = '--mock-embedding' }
+  weekly   = @{ '-NoIndex' = '--no-index'; '-SkipEval' = '--skip-eval'; '-MockEmbedding' = '--mock-embedding' }
+  papers   = @{ '-DryRun' = '--dry-run'; '-Write' = '--write' }
 }
 
-$script = switch ($Command) {
-  'ingest' { Join-Path $Tools 'ingest.py' }
-  'query'  { Join-Path $Tools 'query.py' }
-  'papers' { Join-Path $Tools 'fetch_papers.py' }
-  'weekly' { Join-Path $Tools 'weekly.py' }
-  'ocr'    { Join-Path $Tools 'ocr_pdf.py' }
-  'eval'   { Join-Path $Tools 'eval_retrieval.py' }
-  'plan'   { Join-Path $Tools 'weekly.py' }
-  'translate' { Join-Path $Tools 'translate_paper.py' }
-  'status' { Join-Path $Tools 'status.py' }
-}
-
-$map = $switches[$Command]
 $items = @()
 if ($null -ne $Rest) { $items = @($Rest) }
-$pyArgs = @()
+$pyArgs = @('-m', 'acc_cockpit.cli', $Command)
 
 if ($Command -eq 'query') {
   if ($items.Count -lt 1 -or [string]::IsNullOrWhiteSpace($items[0])) {
-    throw 'query 需要提供问题文本，例如：run.ps1 query "束流位置怎么测"'
+    throw 'query 需要问题文本，例如：run.ps1 query "束流位置怎么测"'
   }
-  $pyArgs += '--query'
   $pyArgs += $items[0]
   $items = @($items | Select-Object -Skip 1)
 }
 
-foreach ($item in $items) {
-  if ($map.ContainsKey($item)) { $pyArgs += $map[$item] } else { $pyArgs += $item }
+$map = $switches[$Command]
+if ($null -ne $map) {
+  foreach ($item in $items) {
+    if ($map.ContainsKey($item)) { $pyArgs += $map[$item] } else { $pyArgs += $item }
+  }
+} else {
+  $pyArgs += $items
 }
 
-if ($Command -eq 'plan' -and $pyArgs -notcontains '--show') { $pyArgs += '--show' }
-
-& $PY $script @pyArgs
-exit $LASTEXITCODE
+$python = Find-Python
+Push-Location $Root
+try {
+  & $python @pyArgs
+  exit $LASTEXITCODE
+} finally {
+  Pop-Location
+}

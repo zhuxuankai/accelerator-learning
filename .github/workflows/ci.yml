@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev,translation]"
+      - name: Static checks
+        run: |
+          python -m ruff check acc_cockpit tests extensions/translation tools/fetch_papers.py
+          python -c "import pathlib; [compile(p.read_text(encoding='utf-8'), str(p), 'exec') for p in pathlib.Path('acc_cockpit').glob('*.py')]"
+      - name: Tests
+        run: python -m pytest
+      - name: Clean-clone demo smoke
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "cockpit-demo"
+          New-Item -ItemType Directory -Force $root | Out-Null
+          Copy-Item -Recurse examples/demo-corpus/course-a $root/course-a
+          Copy-Item -Recurse examples/demo-corpus/course-b $root/course-b
+          Copy-Item -Recurse examples/demo-corpus/文献 $root/文献
+          New-Item -ItemType Directory -Force "$root/kb" | Out-Null
+          Copy-Item -Recurse kb/eval "$root/kb/eval"
+          Copy-Item examples/config.demo.json "$root/kb/config.json"
+          python -m acc_cockpit.cli --workspace $root index --mock-embedding
+          python -m acc_cockpit.cli --workspace $root query "FODO 匹配" --mock-embedding
+          python -m acc_cockpit.cli --workspace $root eval --suite demo --baseline hybrid --mock-embedding

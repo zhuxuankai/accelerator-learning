@@ -1,0 +1,40 @@
+{
+  "version": 2,
+  "anchor": "以官方考核通知为准",
+  "stages": [
+    {
+      "id": "foundation",
+      "name": "阶段 0：课程与工具打底",
+      "start": "2026-10-01",
+      "end": "2027-01-31",
+      "simulation_tasks": [
+        {
+          "id": "fodo-01",
+          "title": "搭建并匹配 FODO cell",
+          "instructions": "画出 beta_x、beta_y 与色散函数，并与薄透镜估算对照。",
+          "status": "未开始"
+        },
+        {
+          "id": "srw-01",
+          "title": "完成一个同步辐射亮度计算",
+          "instructions": "使用 SRW/OASYS 并与课件公式做数量级对照。",
+          "status": "未开始"
+        }
+      ]
+    },
+    {
+      "id": "build",
+      "name": "阶段 1：FEL 仿真与方向确认",
+      "start": "2027-02-01",
+      "end": "2027-07-31",
+      "simulation_tasks": [
+        {
+          "id": "genesis-01",
+          "title": "复现基础 SASE 增益曲线",
+          "instructions": "记录增益长度、饱和功率和能散变化。",
+          "status": "未开始"
+        }
+      ]
+    }
+  ]
+}

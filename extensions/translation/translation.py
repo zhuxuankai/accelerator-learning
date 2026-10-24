@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
-"""论文中文译本的工作流工具
+"""可选论文翻译扩展：中文译本工作流工具
 
-  列表：  run.ps1 translate -List
-  准备：  run.ps1 translate -Prepare "文献/xxx.pdf"     # 抽出带页码标记的工作文件
-  状态：  run.ps1 translate -Status
+  列表：  tools/translation.ps1 -List
+  准备：  tools/translation.ps1 -Prepare "文献/xxx.pdf"     # 抽出带页码标记的工作文件
+  状态：  tools/translation.ps1 -Status
 
 译本由智能体（或人）写在 文献/译文/<同名>.zh.md，本脚本负责抽文本、判语言、查进度，
 不负责机器翻译——物理公式与术语需要判断力，交给模型逐节处理更可靠。
@@ -11,12 +10,20 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import KB, WS, load_config, now_iso  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from acc_cockpit.config import load_config, workspace_root  # noqa: E402
+
+WS = workspace_root()
+KB = WS / "kb"
+
+
+def now_iso() -> str:
+    return dt.datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
 
 CJK = re.compile(r"[\u4e00-\u9fff]")
 QUEUE_MD = KB / "papers" / "待翻译.md"
@@ -196,7 +203,8 @@ def write_queue(cfg: dict) -> list[tuple[Path, str]]:
         "",
         f"更新时间：{now_iso()}　英文论文 {len(rows)} 篇：已完成 {len(done)}，待处理 {len(todo)}",
         "",
-        "> 译本放在 `文献/译文/<与 PDF 同名>.zh.md`；用 `run.ps1 translate -Prepare \"<pdf>\"` 抽工作文件。",
+        "> 译本放在 `文献/译文/<与 PDF 同名>.zh.md`；"
+        "用 `extensions/translation/translation.ps1 -Prepare \"<pdf>\"` 抽工作文件。",
         "",
     ]
     if todo:
@@ -237,7 +245,7 @@ def prepare(cfg: dict, rel: str) -> Path:
 
 
 def main() -> None:
-    cfg = load_config()
+    cfg = load_config()[0]
     ap = argparse.ArgumentParser()
     ap.add_argument("--list", action="store_true", help="列出待翻译的英文论文")
     ap.add_argument("--status", action="store_true", help="显示每篇的译本进度")

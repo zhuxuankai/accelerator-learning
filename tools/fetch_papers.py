@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """论文语料抓取：INSPIRE（主）+ OpenAlex（OA 链接）+ arXiv（全文）
 
 默认 --dry-run：只打印候选表并写出 kb/papers/候选清单.md，不下载。
@@ -7,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import re
 import sys
@@ -18,7 +18,15 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import KB, WS, load_config, now_iso, read_json, write_json  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from acc_cockpit.config import load_config, workspace_root  # noqa: E402
+
+WS = workspace_root()
+KB = WS / "kb"
+
+
+def now_iso() -> str:
+    return dt.datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
 
 UA = "academic-learning-kb/1.0 (personal study index)"
 PAPER_DIR = WS / "文献"
@@ -117,7 +125,10 @@ def http_download(url: str, dest: Path) -> bool:
 
 # ---------------------------------------------------------------- INSPIRE
 def inspire_author_papers(recid: int, since_year: int) -> list[dict]:
-    fields = "titles,publication_info,dois,arxiv_eprints,abstracts,citation_count,document_type,authors,earliest_date"
+    fields = (
+        "titles,publication_info,dois,arxiv_eprints,abstracts,"
+        "citation_count,document_type,authors,earliest_date"
+    )
     out: list[dict] = []
     page = 1
     while page <= 6:
@@ -146,7 +157,10 @@ def inspire_author_papers(recid: int, since_year: int) -> list[dict]:
 
 
 def inspire_search(query: str, size: int = 10) -> list[dict]:
-    fields = "titles,publication_info,dois,arxiv_eprints,abstracts,citation_count,document_type,authors,earliest_date"
+    fields = (
+        "titles,publication_info,dois,arxiv_eprints,abstracts,"
+        "citation_count,document_type,authors,earliest_date"
+    )
     url = (
         "https://inspirehep.net/api/literature?q="
         + urllib.parse.quote(f'"{query}"')
@@ -172,7 +186,9 @@ def crossref_search(title: str, size: int = 5) -> list[dict]:
     url = (
         "https://api.crossref.org/works?query.bibliographic="
         + urllib.parse.quote(title)
-        + f"&rows={size}&select=title,DOI,issued,container-title,author,is-referenced-by-count&mailto=academic-learning@example.com"
+        + f"&rows={size}"
+        + "&select=title,DOI,issued,container-title,author,is-referenced-by-count"
+        + "&mailto=academic-learning@example.com"
     )
     data = http_json(url)
     if not data:
@@ -447,7 +463,11 @@ def build_candidates(cfg: dict) -> tuple[list[dict], list[str]]:
         print(f"[1/3] 抓取 INSPIRE 作者档案 recid={recid} ...", flush=True)
         group = [normalize(m) for m in inspire_author_papers(int(recid), since)]
     else:
-        print("[1/3] 未配置 inspire_author_recid，跳过作者档案抓取（参见 kb/config.example.json）", flush=True)
+        print(
+            "[1/3] 未配置 inspire_author_recid，跳过作者档案抓取"
+            "（参见 kb/config.example.json）",
+            flush=True,
+        )
         group = []
     for paper in group:
         if not is_accelerator_paper(paper):
@@ -470,11 +490,11 @@ def build_candidates(cfg: dict) -> tuple[list[dict], list[str]]:
         search_hint = item.get("search") or title
 
         # 先看是否已经在组内论文池里（省一次网络请求，也更准）
-        pool_hit, pool_ratio, pool_key = None, 0.0, ""
+        pool_hit, pool_ratio = None, 0.0
         for k, cand in by_key.items():
             ratio = title_similarity(title, cand["title"])
             if ratio > pool_ratio:
-                pool_hit, pool_ratio, pool_key = cand, ratio, k
+                pool_hit, pool_ratio = cand, ratio
 
         if pool_hit is not None and pool_ratio >= 0.85:
             pool_hit["priority"] = "P0"
@@ -531,7 +551,7 @@ def build_candidates(cfg: dict) -> tuple[list[dict], list[str]]:
         if unpaywall_ok:
             time.sleep(0.35)
 
-    print(f"[4/4] 用 OpenAlex 补齐缺失的 OA 与引用数 ...", flush=True)
+    print("[4/4] 用 OpenAlex 补齐缺失的 OA 与引用数 ...", flush=True)
     need = [c for c in cands if c.get("doi") and (not c.get("pdf_url") or not c.get("cited_by"))]
     if need:
         oa = openalex_oa_map([c["doi"] for c in need], mailto)
@@ -566,7 +586,8 @@ def write_candidate_md(cands: list[dict], unmatched: list[str]) -> None:
             ratio = c.get("match_ratio")
             lines.append(
                 f"| {i} | {c['year']} | {title} | {c['journal'] or '—'} | {c.get('cited_by', 0)} | "
-                f"{'是' if c.get('oa') else '否'} | {f'{ratio:.2f}' if ratio else '—'} | {c['arxiv'] or '—'} |"
+                f"{'是' if c.get('oa') else '否'} | "
+                f"{f'{ratio:.2f}' if ratio else '—'} | {c['arxiv'] or '—'} |"
             )
         lines.append("")
     if unmatched:
@@ -622,7 +643,7 @@ def download_all(cands: list[dict]) -> tuple[list[dict], list[dict]]:
 
 
 def main() -> None:
-    cfg = load_config()
+    cfg = load_config()[0]
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="只出候选表（默认行为）")
     ap.add_argument("--write", action="store_true", help="下载 PDF 并写清单")
@@ -644,7 +665,10 @@ def main() -> None:
             continue
         print(f"\n== {pri}（{len(subset)} 篇，按引用排序前 8）==")
         for c in sorted(subset, key=lambda x: -x.get("cited_by", 0))[:8]:
-            print(f"  [{c['year']}] {c['title'][:90]}  | {c['journal'] or 'preprint'} | 引 {c.get('cited_by', 0)} | OA={c.get('oa')}")
+            print(
+                f"  [{c['year']}] {c['title'][:90]}  | "
+                f"{c['journal'] or 'preprint'} | 引 {c.get('cited_by', 0)} | OA={c.get('oa')}"
+            )
     if unmatched:
         print(f"\n未能匹配的经典标题 {len(unmatched)} 条：")
         for item in unmatched:
@@ -652,8 +676,11 @@ def main() -> None:
 
     if args.write:
         got, pending = download_all(cands)
-        print(f"\n已下载 {len(got)} 篇到 文献/，待获取 {len(pending)} 篇（见 {PENDING_LIST.relative_to(WS)}）")
-        print("提示：英文论文需要生成中文译本，用 `run.ps1 translate -List` 看清单")
+        print(
+            f"\n已下载 {len(got)} 篇到 文献/，待获取 {len(pending)} 篇"
+            f"（见 {PENDING_LIST.relative_to(WS)}）"
+        )
+        print("提示：英文论文译文是可选扩展，用 `extensions/translation/translation.ps1 -List` 看清单")
     else:
         print("\n（dry-run：未下载。确认后加 --write）")
 

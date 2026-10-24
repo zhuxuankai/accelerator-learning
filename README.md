@@ -1,160 +1,162 @@
-# 加速器学习驾驶舱
+# 加速器学习驾驶舱 v2
 
-把"课程课件 + 论文"变成**可检索、带出处**的本地知识库，并自动维护一份学习路线。
-为加速器物理方向的研究生写的，也可以直接搬到别的专业用——改课程目录名和文献关键词即可。
+一个本地优先的个人学习工具：把课程讲义和论文解析成带精确页码的节点，用
+LlamaIndex + Chroma + multilingual-e5-small 做词法与向量混合检索，并根据明确记录的
+学习进度生成每周计划。
 
-核心是一套零依赖的 Python/Node 脚本：抽取 → 分块 → SQLite FTS5 索引 → 检索；
-再叠一层"每周维护"（增量入库 → 覆盖度 → 看板 → 下周计划）。
+它面向单个研究者维护自己的课程与文献，不承诺零配置、零依赖或开箱即用的公共知识库。
+课程文件、论文、个人进度和译文都留在本机，不进入 Git。
 
-**工作区就是本仓库根目录**，脚本自动推导，不需要改任何路径。
+## v2 的核心边界
 
-## 语料边界（硬约束）
+- 检索是真实的混合检索：BM25 词法召回 + E5 向量召回，使用 reciprocal-rank fusion 合并。
+- 每个结果返回文件、页码/张号、课程和版本依据；低质量 OCR 不会进入向量索引。
+- 文件名中的日期或修订号决定版本先后，mtime 只在同一显式版本的冲突中作为有警告的次级判断。
+- 论文出现在计划里不等于已读；只有带证据的阅读确认才改变阅读状态。
+- 推断的课程进度不能被直接改成已完成。
+- 每周计划从结构化 `roadmap.json`、`progress.csv` 和 `reading.csv` 生成，不使用占位任务。
+- 翻译是可选扩展，不属于核心检索依赖。
 
-索引只覆盖两类材料，其他目录一律不读：
+## 安装
 
-1. 课程目录：`kb/config.json` 里 `include_dirs` 列出的那几个（默认模板是 `课程一/`、`课程二/`）；
-2. 联网下载的论文：`文献/`
-
-`kb/`（索引与中间产物）、`tools/`（脚本）、`学习路线/`（路线与看板）是产物，不是语料。
-
-**这些语料不进版本库**：课程课件与期刊论文有版权，且教材扫描件动辄上百 MB、超过 GitHub
-的单文件硬上限。仓库只维护"系统"本身，语料在本地重建。
-
-## 目录结构
-
-```
-tools/                     run.ps1（统一入口）与全部 Python/Node 脚本
-kb/config.example.json     配置模板（复制成 config.json 后按需改）
-kb/glossary.md             术语表：中英对照，检索扩展用
-kb/eval/questions.jsonl    检索回归题库
-学习路线/学习路线.example.md   学习路线模板
-学习路线/进度追踪.example.csv  进度表模板
-AGENTS.md                  本工作区给 Codex 的行为规则
-```
-
-仓库里**只有模板**。你自己的 `kb/config.json`、`kb/papers/`、`学习路线/学习路线.md`、
-`进度追踪.csv`、`覆盖度.md`、`dashboard.html`、`周计划/` 都在 `.gitignore` 里，
-只留在本机、不会被提交——想公开分享自己的版本时再手动去掉对应规则。
-
-## 快速上手
-
-在仓库根目录执行（统一走 `run.ps1`，它自己会探测 Python / Node / Poppler）：
+需要 Python 3.10+。推荐在仓库根目录创建虚拟环境：
 
 ```powershell
-.\tools\run.ps1 status                              # 看知识库与进度概况
-.\tools\run.ps1 plan                                # 查看本周任务清单（只读，不改任何文件）
-.\tools\run.ps1 query "BPM 怎么测横向位置" -K 5      # 检索，返回带出处的 JSON
-.\tools\run.ps1 query "分流阻抗" -Course 直线加速器    # 限定课程
-.\tools\run.ps1 ingest                             # 增量入库（新课件丢进课程目录后执行）
-.\tools\run.ps1 papers                             # 生成论文候选清单（默认不下载）
-.\tools\run.ps1 translate -List                    # 看哪些英文论文还没中文译本
-.\tools\run.ps1 weekly                             # 每周维护：入库→覆盖度→看板→本周与下周计划
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -U pip
+.\.venv\Scripts\python -m pip install -e .
 ```
 
-检索回归测试（默认看 top-3 命中率）：
+扫描版课件额外安装 OCR：
 
 ```powershell
-.\tools\run.ps1 eval 3
+.\.venv\Scripts\python -m pip install -e ".[ocr]"
 ```
 
-## 工作原理
+首次建立向量索引时会下载默认模型 `intfloat/multilingual-e5-small`。模型和索引均为本地文件。
 
-- **抽取**：PyPDF 逐页抽文本（快），稀疏页再用 pdfplumber 复核（准）；PPTX 走 python-pptx
-  （含备注），DOCX 走 python-docx。
-- **OCR**：整份扫描件用 poppler 渲染 220 DPI + tesseract.js（`chi_sim+eng`），结果缓存到
-  `kb/ocr/`，第二次运行不重跑；OCR 块在排序里降权，公式是乱码、不作为引用依据。
-- **索引**：SQLite FTS5，中文按二元切分后用 `unicode61` 建索引，`bm25()` 排序；
-  检索 = 术语表同义扩展 → 召回 → 重排（词覆盖 + 短语命中 + 课程加权）。
-- **版本去重**：同一份讲义的多个日期版本按"课程 + 标题主干"归组，默认只召回最新版，
-  需要看演进时给 `query` 加 `-AllVersions`。
-- **评测**：`kb/eval/questions.jsonl` 有 20 道真实问题，每周维护后回归一次。
+配置按以下顺序读取：
 
-## 每周自动维护
+1. `ACCKB_WORKSPACE` 指定的工作区；
+2. `kb/config.json`；
+3. `kb/config.example.json`。
 
-每周五 21:00 有一条 heartbeat 自动化「每周学习路线维护」挂在本仓库对应的对话上，动作是
-`run.ps1 weekly`，然后汇报：新增语料、下周读的两篇论文、下周仿真任务、课程薄弱点。
-无变化时保持静默。
-
-## 英文论文中译
-
-英文论文配一份中文译本（默认开启，可用 `kb/config.json` 的 `translate.enabled` 关掉）：
-
-- `run.ps1 translate -List` 列出待译论文并刷新 `kb/papers/待翻译.md`；
-- `run.ps1 translate -Prepare "文献/<文件>.pdf"` 抽出带页码标记的工作文件（写到 `kb/work/`，
-  属于中间产物，不参与索引）；
-- 译本写到 `文献/译文/<同名>.zh.md`：中文标题 + 原文信息 + 逐节译文 + 图表标题翻译，
-  公式保留 LaTeX，术语首次出现附英文；
-- 译本开头维护 `<!-- 已译页: n-m / N -->`，长论文可跨多次分批续译；
-- 译本本身在语料目录内，会被一起索引，所以中文提问可以直接命中译文。
-
-## 进度回填纪律
-
-`学习路线/进度追踪.csv` 每行带 `来源` 字段：`已确认`（用户说过或以产出为证）/ `推断`（系统推测）。
-系统只把 `推断` 项列为待确认，不会自动打勾。
-
-## 环境依赖
-
-只有 Python 是必需的，其余按需：
-
-| 组件 | 用途 | 是否必需 |
-|---|---|---|
-| Python 3.9+ | 全部脚本 | 必需 |
-| `pypdf` / `pdfplumber` | PDF 抽文本 | 读 PDF 时需要 |
-| `python-pptx` / `python-docx` | 抽 PPTX / DOCX | 读这些格式时需要 |
-| Node.js + `tesseract.js` | 扫描件 OCR | 仅 OCR 时需要 |
-| Poppler（`pdftoppm`） | 把 PDF 渲染成图给 OCR | 仅 OCR 时需要 |
-| OCR 语言包 | `chi_sim` + `eng` | 首次 OCR 时自动下载到 `kb/tools/tessdata/`（约 68 MB，不入库） |
-
-程序按 **`ACCKB_*` 环境变量 → Codex 自带运行时 → 系统 PATH** 的顺序自动探测，换机器不用改代码：
-
-| 环境变量 | 覆盖的对象 |
-|---|---|
-| `ACCKB_PYTHON` | Python 解释器 |
-| `ACCKB_NODE` | Node.js |
-| `ACCKB_NODE_MODULES` | 含 `tesseract.js` 的 node_modules |
-| `ACCKB_PDFTOPPM` | Poppler 的 `pdftoppm` 可执行文件 |
-| `ACCKB_RUNTIME` | 整个运行时根目录 |
-
-## 给别人用 / 换专业怎么改
-
-1. `git clone` 之后，把 `kb/config.example.json` 复制成 `kb/config.json`，
-   再把 `include_dirs` 改成你自己的课程目录名；
-2. 每个课程目录里放课件（PDF / PPTX / DOCX / MD 都行）；
-3. 论文语料改 `kb/config.json` 的 `papers` 段（作者、主题关键词、经典文献标题），
-   跑 `.\tools\run.ps1 papers` 看候选清单，确认后加 `-Write` 下载开放获取的全文；
-4. `kb/glossary.md` 换成你领域的中英术语对照表——它直接决定检索召回率；
-5. `kb/eval/questions.jsonl` 换成你自己的 20 道真实问题，作为回归基线；
-6. 把 `学习路线/学习路线.example.md` 与 `进度追踪.example.csv` 复制成去掉 `.example`
-   的正式文件，写你自己的路线与进度（这两份默认不进仓库）。
-
-## 许可证与贡献
-
-MIT（见 [LICENSE](LICENSE)）。欢迎提 issue 和 PR，规范见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-**请不要提交课程课件与论文 PDF**——`.gitignore` 已经排除了这些路径。
-
-## 配套技能
-
-个人技能 `accelerator-study-copilot`（装在 `$CODEX_HOME/skills/`，即默认的
-`~/.codex/skills/`；源码副本在本仓库 `tools/skill-src/`）负责检索答疑、每周规划与进度回填，并在需要时路由到
-`deep-research` / `academic-paper` / `academic-paper-reviewer` / `academic-pipeline` / `ppt-master-skill`。
-
-## 同步到 GitHub
-
-远端仓库：`https://github.com/zhuxuankai/accelerator-learning`（公开，MIT 许可）。
-欢迎 fork 之后提 issue 或 PR——**请不要提交课程课件与论文 PDF**，见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-日常维护就是常规三步：
+新工作区应从模板创建配置，并把 `include_dirs` 改成真实课程目录：
 
 ```powershell
-git add -A
-git commit -m "更新学习路线与知识库配置"
-git push
+Copy-Item kb/config.example.json kb/config.json
+Copy-Item 学习路线/roadmap.example.json 学习路线/roadmap.json
 ```
 
-几点约定：
+## 命令
 
-- 凭据放在 Windows 凭据管理器里（Git Credential Manager），**不写进仓库、不写进脚本**。
-- 每周自动化只改本地文件（覆盖度、看板、周计划），需要备份时手动 `git push` 一次即可。
-- 课件与论文 PDF 不进版本库（版权 + 单文件超 GitHub 上限），只维护"系统"本身；
-  语料按 README 上文的方式在本地重建。
-- 提交身份配置在本仓库的局部配置里（`zhuxuankai` + GitHub noreply 邮箱），不影响其它仓库。
+```powershell
+.\tools\run.ps1 doctor
+.\tools\run.ps1 index
+.\tools\run.ps1 query "BPM 怎么测横向位置" -K 5
+.\tools\run.ps1 query "色散函数" -Mode hybrid -AllVersions
+.\tools\run.ps1 eval -Suite demo -Split dev -Baseline hybrid
+.\tools\run.ps1 weekly
+.\tools\run.ps1 progress list
+.\tools\run.ps1 progress suggest
+.\tools\run.ps1 progress confirm prog-xxxx --evidence "完成并提交作业"
+.\tools\run.ps1 reading list
+.\tools\run.ps1 reading confirm paper-xxxx --evidence "读书笔记已归档"
+.\tools\run.ps1 papers -DryRun
+.\tools\run.ps1 status
+```
+
+`query` 输出一个 JSON 对象：
+
+```json
+{
+  "status": "ok",
+  "results": [
+    {
+      "rel_path": "课程/讲义.pdf",
+      "unit_label": "页12",
+      "vector_rank": 2,
+      "lexical_rank": 1,
+      "fused_score": 0.0325,
+      "version_basis": "filename_date"
+    }
+  ],
+  "diagnostics": {
+    "warnings": [],
+    "errors": []
+  }
+}
+```
+
+没有索引、配置损坏或依赖缺失会返回非零退出码和修复命令。只有索引正常但确实没有匹配时，
+才返回 `status: no_match`。
+
+## 版本与 OCR
+
+支持的显式版本标记包括文件名末尾的 `0923`、`20260923`、`v2`、`第2版` 和数字修订号。
+无法判断先后的多个文件不会互相遮蔽：它们都会保留在检索范围内，并产生 `ambiguous` 警告。
+
+OCR 缓存位于 `kb/v2/ocr.sqlite`，主键为：
+
+```text
+(file_sha1, page, dpi, language, model_version)
+```
+
+同一页重复 OCR 会 upsert，不会追加重复记录。OCR 页记录置信度、替换字符比例和噪声比例；
+低质量页保留供定位，但不进入语义向量索引。
+
+Chroma 的 HNSW 向量库不放在 OneDrive 同步目录中，而是放在
+`%LOCALAPPDATA%\accelerator-learning-cockpit\<workspace-id>\chroma`。正文 catalog 与状态
+仍位于 `kb/v2/`；删除本机缓存后可从 catalog 和语料重建向量库。
+
+## 学习计划数据
+
+以下文件属于个人数据，已被 `.gitignore` 排除：
+
+- `学习路线/roadmap.json`：阶段、日期和仿真任务；
+- `学习路线/progress.csv`：课程、仿真和写作进度；
+- `学习路线/reading.csv`：论文阅读状态；
+- `学习路线/plans/`：每周计划及结构化状态；
+- `学习路线/dashboard.html`：离线看板。
+
+`progress suggest` 只会生成来源为“推断”的候选；必须显式接受后才写入正式进度。
+`progress confirm` 和 `reading confirm` 必须提供证据。
+
+## 评测
+
+当前仓库自带合成 demo 语料和人工设计的 demo dev/held-out 集，用于 CI 与安装检查。
+个人课程语料的质量评测要求使用 `kb/eval/v2/local-dev.jsonl` 和
+`kb/eval/v2/local-heldout.jsonl`，每题包含精确文件、页码和答案支撑片段，并由用户审核
+`approved: true`。
+
+指标包括 page hit@3、Recall@50、MRR@10、nDCG@10、空结果率和延迟。旧版按“文件名出现”
+判定的 20 题只保留为 smoke 数据，不再作为检索质量证明。
+
+## 翻译扩展
+
+翻译工具移到 `extensions/translation/`：
+
+```powershell
+.\extensions\translation\translation.ps1 -List
+.\extensions\translation\translation.ps1 -Prepare "文献/example.pdf"
+.\extensions\translation\translation.ps1 -Audit
+```
+
+它单独安装依赖：
+
+```powershell
+.\.venv\Scripts\python -m pip install -e ".[translation]"
+```
+
+## 已知限制
+
+- E5 模型主要解决跨中英文表达差异，不等同于领域推理；最终回答仍需核对原始页面。
+- 公式和复杂表格仍可能抽取不完整。低质量 OCR 只用于定位，不应被当作公式原文。
+- DOCX 没有稳定的固定页码，定位到“正文”。
+- 论文自动抓取仍依赖外部开放 API，详细候选必须人工确认后再下载。
+- 人工审核的本地 held-out 集完成前，本项目只能声明为技术预览，不能声明达到特定检索指标。
+
+## 贡献
+
+欢迎提交 issue 和 PR。新增功能必须同时提供测试和真实的行为说明。请不要提交课程 PDF、
+论文、个人进度或私人译文。许可证见 [LICENSE](LICENSE)。

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "accelerator-learning-cockpit"
+version = "2.0.0"
+description = "Local hybrid retrieval and evidence-based study planning for accelerator physics."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+  "chromadb>=1,<2",
+  "llama-index-core>=0.12,<0.15",
+  "llama-index-embeddings-huggingface>=0.5",
+  "llama-index-retrievers-bm25>=0.4",
+  "PyMuPDF>=1.24",
+  "python-docx>=1.1",
+  "python-pptx>=1.0",
+  "sentence-transformers>=3.0",
+]
+
+[project.optional-dependencies]
+ocr = ["rapidocr-onnxruntime>=1.4"]
+translation = ["fonttools>=4.50", "pdfplumber>=0.11", "pypdf>=5"]
+dev = [
+  "pytest>=8",
+  "ruff>=0.9",
+]
+
+[tool.setuptools.packages.find]
+include = ["acc_cockpit*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

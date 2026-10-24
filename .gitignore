@@ -8,6 +8,9 @@
 # ===== 本地索引与中间产物（可随时重建）=====
 /kb/kb.sqlite
 /kb/kb.sqlite-*
+/kb/legacy/
+/kb/v2/
+/kb/eval/v2/local-*.jsonl
 /kb/manifest.json
 /kb/extracted/
 /kb/ocr/
@@ -24,6 +27,10 @@
 /学习路线/覆盖度.md
 /学习路线/dashboard.html
 /学习路线/周计划/
+/学习路线/roadmap.json
+/学习路线/progress.csv
+/学习路线/reading.csv
+/学习路线/plans/
 /个人/
 /本周论文/
 /作业/
@@ -37,17 +44,12 @@
 *.rar
 
 # 课件/数据类二进制兜底：不论目录叫什么，都不让大文件进库
-*.pdf
-*.pptx
-*.docx
-*.mat
-*.zip
-*.rar
-
 # ===== 系统杂项 =====
 __pycache__/
 *.pyc
 *.tmp
+.venv/
+*.egg-info/
 Thumbs.db
 desktop.ini
 ~$*

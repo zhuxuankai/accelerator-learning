@@ -1,44 +1,35 @@
 # 贡献指南
 
-欢迎提 issue 和 pull request。这是个个人学习项目的工具层，目标很简单：**让"课程材料 + 论文"
-变成可检索、可追责的知识库，并自动维护一份学习路线**。
+本项目是个人本地工具，欢迎可复现的 bug 报告和范围明确的 PR。
 
-## 提 issue
+## 提交前检查
 
-先说清楚三件事，我处理起来会快很多：
+```powershell
+.\.venv\Scripts\python -m ruff check acc_cockpit tests extensions/translation
+.\.venv\Scripts\python -m pytest
+.\.venv\Scripts\python -m acc_cockpit.cli --workspace <demo-root> index --mock-embedding
+```
 
-1. 你跑的是哪条命令（`run.ps1` 的子命令与参数）；
-2. 期望结果与实际结果；
-3. 报错原文（脚本会把 `[error]` 行打到终端，OCR 相关问题请附上 `kb/*.log`）。
-
-功能建议请说明使用场景：你手头是什么语料（课件格式、语言、是否扫描件），想解决什么问题。
-
-## 提 pull request
-
-- 一个 PR 只做一件事，标题写清改动范围。
-- 提交信息用 `type: 说明`，type 取 `feat` / `fix` / `docs` / `refactor` / `chore`。
-- 改完请自测：
-
-  ```powershell
-  .\tools\run.ps1 ingest      # 增量入库不应报错、不应重复入库
-  .\tools\run.ps1 query "你的测试问题" -K 3
-  python tools\eval_retrieval.py 3   # 检索回归，命中率不应下降
-  ```
+涉及检索排序的 PR 必须同时报告 lexical、vector、hybrid 三种基线在 demo held-out 上的
+page hit@3、Recall@50、MRR@10、nDCG@10、空结果率和 p95 延迟。只有 demo 结果不能证明真实
+课程语料质量。
 
 ## 代码约定
 
-- Python 3.9+，**只用标准库**（`pypdf` / `pdfplumber` / `python-pptx` / `python-docx` 是可选的
-  文档抽取依赖，缺了要有降级路径）。引入新依赖请在 issue 里先讨论。
-- 不要把外部程序的绝对路径写进代码：一律走 `ACCKB_*` 环境变量 → Codex 自带运行时 → 系统 PATH
-  这条探测链（见 `tools/common.py`）。
-- 中文是主要交互语言，注释和日志可以用中文，但标识符保持英文。
+- Python 3.10+，格式与 lint 由 `ruff` 管理。
+- LlamaIndex 管理节点和检索，Chroma 持久化向量；不要恢复手写“伪 RAG”评分权重。
+- 查询结果必须保留精确 `rel_path` 和 `unit_label`。
+- 版本判断不得以 mtime 作为首选依据。
+- OCR 缓存必须幂等，低质量页不得进入语义索引。
+- 缺失索引和依赖错误必须非零退出，禁止静默返回空结果。
+- 计划生成不得出现“待填”“按阶段填写”等占位任务。
+- 推断状态不能自动变成完成。
 
-## 请不要提交语料
+## 不要提交
 
-以下内容请留在本地，`.gitignore` 已排除：
+- 课程讲义、教材和论文 PDF；
+- 个人 `progress.csv`、`reading.csv`、`roadmap.json`、计划和看板；
+- `kb/v2/`、`kb/legacy/` 或任何向量数据库；
+- 私人译文和 OCR 文本。
 
-- 课程课件、讲义、教材 PDF（版权属于授课教师与出版社）；
-- 期刊论文 PDF（版权属于出版方）；
-- 索引与中间产物（`kb/kb.sqlite`、`kb/extracted/`、`kb/ocr/`、`kb/tools/tessdata/`）。
-
-想演示功能，用你自己写的、可以公开的样例文件，或在 issue 里描述结构即可。
+只使用合成 demo 或可公开授权的样例作为测试数据。

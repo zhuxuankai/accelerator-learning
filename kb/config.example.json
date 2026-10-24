@@ -1,31 +1,39 @@
 {
-  "version": 1,
+  "version": 2,
   "include_dirs": ["课程一", "课程二", "文献"],
-  "exclude": ["kb", "tools", "学习路线"],
-  "ocr": {
-    "dpi": 220,
-    "workers": 3,
-    "batch": 24,
-    "sparse_char_threshold": 40,
-    "full_image_ratio": 0.8
+  "exclude": ["kb", "tools", "学习路线", "extensions", "examples", "tests"],
+  "index": {
+    "chunk_size": 700,
+    "chunk_overlap": 70,
+    "embedding_model": "intfloat/multilingual-e5-small",
+    "rrf_k": 60,
+    "candidate_k": 50,
+    "max_chunks_per_doc": 3
   },
-  "index": {"max_chars": 800, "overlap": 100},
+  "ocr": {
+    "enabled": true,
+    "dpi": 220,
+    "language": "chi_sim+eng",
+    "model_version": "rapidocr-v1",
+    "min_confidence": 0.6,
+    "min_chars": 40,
+    "max_replacement_ratio": 0.05,
+    "max_noise_ratio": 0.32
+  },
   "reading": {
     "stage": "foundation",
-    "close_per_week": 1,
-    "skim_per_week": 1,
-    "review_bonus": 6.0,
-    "group_bonus": 1.0,
-    "classic_bonus": 2.0,
-    "focus_keywords": ["free-electron laser", "undulator", "beam dynamics", "emittance", "accelerating structure"]
+    "slots": [
+      {"category": "review", "mode": "精读"},
+      {"category": "group", "mode": "泛读"}
+    ]
+  },
+  "weekly": {
+    "eval_required": true,
+    "max_review_candidates": 1
   },
   "translate": {
-    "enabled": true,
-    "out_dir": "文献/译文",
-    "style": "full",
-    "keep_equations": true,
-    "term_style": "术语首次出现附英文",
-    "review_after": true
+    "enabled": false,
+    "out_dir": "文献/译文"
   },
   "papers": {
     "inspire_author_recid": null,
@@ -34,10 +42,7 @@
     "mailto": "your-email@example.com",
     "target_count": 70,
     "coauthors": ["Author One", "Author Two"],
-    "topic_keywords": ["free-electron laser", "SASE", "seeded", "undulator", "beam diagnos", "emittance", "linac", "storage ring", "synchrotron radiation"],
-    "classics": [
-      {"title": "填一篇你领域的奠基文献的完整标题", "note": "为什么必读"},
-      {"title": "再填一篇经典综述的完整标题", "note": ""}
-    ]
+    "topic_keywords": ["free-electron laser", "beam dynamics", "linac", "synchrotron radiation"],
+    "classics": []
   }
 }
