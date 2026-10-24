@@ -249,6 +249,14 @@ def index_doc(conn, rel_path: str, path: Path, cfg: dict, skip_ocr: bool = False
             fh.write(json.dumps(item, ensure_ascii=False) + "\n")
 
     # 写库
+    # chunks_fts 是普通 FTS5 表（不是 external-content 表），删除正表行时
+    # 不会自动删除对应倒排项。若先删 chunks，SQLite 会复用 rowid，随后插入
+    # 新块时就会与遗留的 chunks_fts.rowid 冲突。必须在删除正表前显式清理。
+    conn.execute(
+        "DELETE FROM chunks_fts WHERE rowid IN "
+        "(SELECT id FROM chunks WHERE rel_path = ?)",
+        (rel_path,),
+    )
     conn.execute("DELETE FROM chunks WHERE rel_path = ?", (rel_path,))
     conn.execute("DELETE FROM docs WHERE rel_path = ?", (rel_path,))
     cur = conn.execute(
@@ -375,8 +383,14 @@ def main() -> None:
                 f"OCR页={meta['ocr_units']} 用时={meta['elapsed']}s"
             )
 
-        removed = [rel for rel in known if rel not in seen]
+        # --only 是局部重建，未选中的文件不应被视为删除。
+        removed = [] if args.only else [rel for rel in known if rel not in seen]
         for rel in removed:
+            conn.execute(
+                "DELETE FROM chunks_fts WHERE rowid IN "
+                "(SELECT id FROM chunks WHERE rel_path = ?)",
+                (rel,),
+            )
             conn.execute("DELETE FROM chunks WHERE rel_path = ?", (rel,))
             conn.execute("DELETE FROM docs WHERE rel_path = ?", (rel,))
             known.pop(rel, None)
