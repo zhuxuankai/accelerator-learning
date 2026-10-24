@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 import time
-import warnings
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Literal
@@ -121,21 +120,38 @@ def _lexical_retriever(
     all_versions: bool,
 ):
     try:
-        from llama_index.retrievers.bm25 import BM25Retriever
+        import bm25s
+        from llama_index.core.retrievers import BaseRetriever
+        from llama_index.core.schema import NodeWithScore
     except ImportError as exc:
-        raise CockpitError("缺少 LlamaIndex BM25 组件。请执行 `pip install -e .`。") from exc
+        raise CockpitError("缺少 LlamaIndex/bm25s 组件。请执行 `pip install -e .`。") from exc
     nodes = [node for node in _load_nodes(paths) if _metadata_matches(node, course, kind, all_versions)]
     if not nodes:
         return None
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="The tokenizer parameter is deprecated.*")
-        return BM25Retriever.from_defaults(
-            nodes=nodes,
-            similarity_top_k=min(int(cfg.get("index", {}).get("candidate_k", 50)), len(nodes)),
-            language="zh",
-            skip_stemming=True,
-            tokenizer=chinese_bigram_tokens,
-        )
+    model = bm25s.BM25()
+    model.index(
+        [chinese_bigram_tokens(node.get_content()) for node in nodes],
+        show_progress=False,
+    )
+    top_k = min(int(cfg.get("index", {}).get("candidate_k", 50)), len(nodes))
+
+    class ChineseBM25Retriever(BaseRetriever):
+        def _retrieve(self, query_bundle):
+            tokens = chinese_bigram_tokens(query_bundle.query_str)
+            if not tokens:
+                return []
+            indexes, scores = model.retrieve(
+                [tokens],
+                k=top_k,
+                show_progress=False,
+            )
+            return [
+                NodeWithScore(node=nodes[index], score=float(score))
+                for index, score in zip(indexes[0], scores[0], strict=False)
+                if float(score) > 0.0
+            ]
+
+    return ChineseBM25Retriever()
 
 
 def _normalise_result(item: Any) -> dict[str, Any]:
