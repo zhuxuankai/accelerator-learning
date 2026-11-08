@@ -1,60 +1,42 @@
 ---
 name: accelerator-study-copilot
-description: 在加速器学习驾驶舱 v2 中做带精确页/张出处的混合检索问答、每周学习规划、进度确认和知识库维护。适用于课程问题、论文安排、仿真任务、索引与学习路线维护；不用于工作区外的通用写作或编程。
+description: 在加速器学习驾驶舱工作区中检索课程与论文、维护学习路线、确认进度和阅读状态，并管理论文中文译本校对。适用于带页/张出处的课程问答、周计划、文献选择、知识库维护和公式渲染排障；不用于工作区外的一般编程或写作。
 metadata:
-  short-description: 加速器课程混合检索与可信学习规划
+  short-description: 加速器课程检索、学习规划与译本校对
 ---
 
-# 加速器学习驾驶舱 v2
+# 加速器学习驾驶舱
 
-工作区根目录以 clone 位置为准。只读取 `kb/config.json` 的 `include_dirs` 和 `文献/`；
-不要引用工作区外目录，也不要把索引、计划、脚本或演示数据当作课程语料。
+工作区根目录以包含 `kb/config.json` 和 `tools/run.ps1` 的目录为准。只读取
+`include_dirs` 列出的课程目录和 `文献/`；索引、计划、脚本、演示和测试文件都不是课程语料。
 
-## 命令
+## 先判断任务
 
-- `run.ps1 doctor`
-- `run.ps1 index [-Full] [-Only <path>]`
-- `run.ps1 query "<问题>" [-Course X] [-Kind slide|book|paper|doc] [-K 8] [-AllVersions] [-Mode hybrid]`
-- `run.ps1 eval -Suite local -Split dev -Baseline hybrid`
-- `run.ps1 weekly`
-- `run.ps1 progress list|suggest|confirm|reject`
-- `run.ps1 reading list|confirm`
-- `run.ps1 status`
+- **概念解释、跨中英文问法、找相关课件**：读
+  [references/retrieval-and-citations.md](references/retrieval-and-citations.md)，用 hybrid 检索。
+- **明确文件名、缩写、公式号、术语或原文片段**：用 lexical 检索；具体判据见同一 reference。
+- **“本周任务是什么”**：只读取现有 `学习路线/plans/` 或 `dashboard.html`，不要重建索引。
+- **“下周学什么”、每周维护、补充新课件**：读
+  [references/weekly-maintenance.md](references/weekly-maintenance.md)。
+- **“我读完了”“这项做完了”“进度如何”**：读
+  [references/progress-and-reading.md](references/progress-and-reading.md)。
+- **翻译、逐页覆盖、公式标红或 Markdown+Math 渲染问题**：读
+  [references/translation-and-math.md](references/translation-and-math.md)。
 
-## 检索问答
+## 不可违反的结果规则
 
-1. 先运行混合检索，不要凭记忆引用课件。
-2. 回答必须给出 `rel_path + unit_label`。
-3. 阅读 `diagnostics.warnings`。版本歧义不得擅自选一个；低质量 OCR 只能用于定位，
-   不能当公式原文。
-4. `no_match`、依赖缺失和索引损坏要区分。后者必须报告非零错误及修复命令。
-5. 检索结果不足时指出下一张/页，不堆砌无关片段。
+1. 课程结论必须来自本次检索结果，并给出 `rel_path + unit_label`。
+2. 必须检查 `diagnostics.warnings`。版本歧义不得自行宣布最新；低质量 OCR 只能用于定位，
+   不能作为公式原文。
+3. `no_match`、索引缺失、依赖损坏和网络失败必须区分。错误不能伪装成“课件里没有”。
+4. 计划出现、文件存在、筛选结果或“推断”来源都不等于已完成或已读。
+5. 完成状态只能通过带证据的 `progress confirm` 或 `reading confirm` 修改。
+6. `weekly` 的 degraded 只表示维护完成但质量门槛不可用；不得称为质量通过。
+7. 不手工修改索引状态、catalog 或个人进度 CSV。
 
-## 每周维护
+## 输出方式
 
-运行 `run.ps1 weekly`，汇报：
-
-1. 新增或变更语料；
-2. 下周精读和泛读论文；
-3. 当前阶段仿真任务；
-4. 有证据支持的“建议复习点”。
-
-没有变化、逾期或待确认事项时保持静默。评测必须使用人工审核的 local held-out 集才能声明
-质量；未审核或失败时只能称技术预览。
-
-## 进度纪律
-
-- 计划中出现论文不等于已读。
-- `来源=推断` 不等于完成。
-- 只有带证据的 `progress confirm` 或 `reading confirm` 才能标记完成。
-- 不手工把推断项改成已完成。
-
-## 翻译扩展
-
-翻译是可选扩展，位于 `extensions/translation/`。交付英文论文中文译本前必须运行：
-
-```powershell
-pwsh extensions/translation/translation.ps1 -Audit
-```
-
-审计必须零缺页、零占位符、公式可渲染。低质量 OCR 或抽取残缺公式要标页码，不得猜补。
+- 工具返回 JSON 时，提炼结论和出处，不倾倒整段 JSON。
+- 公式使用工作区已验证的 Markdown+Math 语法；与渲染问题有关的任务先读
+  [translation-and-math reference](references/translation-and-math.md)。
+- 任务受阻时给一条可执行的修复命令或一个明确的用户确认项，不发散猜测。

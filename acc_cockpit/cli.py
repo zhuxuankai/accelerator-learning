@@ -8,12 +8,14 @@ import sys
 from pathlib import Path
 
 from .config import CockpitError, Paths, load_config, workspace_root
-from .evaluation import evaluate
+from .embedding import model_cache_exists, model_download_allowed
+from .evaluation import evaluate, quality_gate
 from .indexer import build_index
 from .planning import (
     confirm_progress,
     confirm_reading,
     generate_weekly,
+    import_legacy_progress,
     list_progress,
     list_reading,
     reject_progress,
@@ -33,6 +35,15 @@ def _module(name: str) -> bool:
 def doctor(root: Path) -> dict:
     cfg, config_file, using_example = load_config(root)
     paths = Paths.for_root(root)
+    model_name = str(cfg.get("index", {}).get("embedding_model", "intfloat/multilingual-e5-small"))
+    index_model = None
+    if paths.state_file.exists():
+        try:
+            index_model = json.loads(paths.state_file.read_text(encoding="utf-8")).get(
+                "embedding_model"
+            )
+        except (OSError, json.JSONDecodeError):
+            index_model = None
     checks = {
         "python": sys.version.split()[0],
         "config": str(config_file),
@@ -47,6 +58,10 @@ def doctor(root: Path) -> dict:
         "chromadb": _module("chromadb"),
         "sentence_transformers": _module("sentence_transformers"),
         "rapidocr": _module("rapidocr_onnxruntime"),
+        "embedding_model": model_name,
+        "embedding_model_cached": model_cache_exists(model_name),
+        "download_allowed": model_download_allowed(cfg),
+        "index_model_matches_config": index_model in (None, model_name),
     }
     missing = []
     for name in ("pymupdf", "llama_index", "chromadb", "sentence_transformers"):
@@ -59,6 +74,13 @@ def doctor(root: Path) -> dict:
         actions.append("需要扫描件 OCR 时安装：python -m pip install -e .[ocr]")
     if not paths.state_file.exists():
         actions.append("建立索引：run.ps1 index")
+    if not checks["embedding_model_cached"] and not checks["download_allowed"]:
+        actions.append(
+            "模型未缓存：首次下载请设置 ACCKB_ALLOW_MODEL_DOWNLOAD=1，"
+            "或配置 model.allow_download=true。"
+        )
+    if not checks["index_model_matches_config"]:
+        actions.append("索引由其他 embedding 模型建立：run.ps1 index -Full")
     return {
         "status": "ok" if not missing else "missing_dependencies",
         "checks": checks,
@@ -70,6 +92,9 @@ def doctor(root: Path) -> dict:
 def status(root: Path) -> dict:
     cfg, config_file, using_example = load_config(root)
     paths = Paths.for_root(root)
+    configured_model = str(
+        cfg.get("index", {}).get("embedding_model", "intfloat/multilingual-e5-small")
+    )
     state = {}
     if paths.state_file.exists():
         try:
@@ -87,6 +112,8 @@ def status(root: Path) -> dict:
             "files": len(state.get("files", {})),
             "nodes": state.get("node_count", 0),
             "semantic_nodes": state.get("semantic_node_count", 0),
+            "embedding_model": state.get("embedding_model"),
+            "model_matches_config": state.get("embedding_model") in (None, configured_model),
             "built_at": state.get("built_at"),
             "warnings": [
                 warning
@@ -154,6 +181,10 @@ def build_parser() -> argparse.ArgumentParser:
     confirm_parser.add_argument("--evidence", required=True)
     reject_parser = progress_sub.add_parser("reject")
     reject_parser.add_argument("id")
+    import_parser = progress_sub.add_parser("import-legacy")
+    import_group = import_parser.add_mutually_exclusive_group()
+    import_group.add_argument("--dry-run", action="store_true")
+    import_group.add_argument("--accept", action="store_true")
 
     reading_parser = sub.add_parser("reading")
     reading_sub = reading_parser.add_subparsers(dest="reading_command", required=True)
@@ -216,14 +247,20 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.command == "weekly":
+            weekly_cfg = load_config(root)[0].get("weekly", {})
             index_result = None
             if not args.no_index:
                 index_result = build_index(root, mock_embedding=args.mock_embedding)
             eval_result = None
             eval_error = None
+            quality = {
+                "status": "skipped",
+                "failures": [],
+                "thresholds": weekly_cfg.get("thresholds", {}),
+                "metrics": {},
+            }
             if not args.skip_eval:
                 try:
-                    weekly_cfg = load_config(root)[0].get("weekly", {})
                     eval_result = evaluate(
                         root,
                         suite=str(weekly_cfg.get("eval_suite", "local")),
@@ -231,14 +268,53 @@ def main(argv: list[str] | None = None) -> int:
                         baseline="hybrid",
                         mock_embedding=args.mock_embedding,
                     )
+                    quality = quality_gate(eval_result, weekly_cfg.get("thresholds", {}))
                 except CockpitError as exc:
                     eval_error = str(exc)
-            plan = generate_weekly(root, eval_result=eval_result)
+                    quality = {
+                        "status": "unavailable",
+                        "failures": [eval_error],
+                        "thresholds": weekly_cfg.get("thresholds", {}),
+                        "metrics": {},
+                    }
+            plan = generate_weekly(root, eval_result=eval_result, eval_error=eval_error, quality=quality)
             plan["index"] = index_result
             plan["eval_error"] = eval_error
+            plan["quality"] = quality
+            weekly_status = (
+                "failed"
+                if quality["status"] == "failed"
+                else "degraded"
+                if quality["status"] in {"unavailable", "skipped"}
+                else "ok"
+            )
+            plan["status"] = weekly_status
+            plan["summary"] = {
+                "corpus": {
+                    "added_files": (index_result or {}).get("added_files", []),
+                    "updated_files": (index_result or {}).get("updated_files", []),
+                    "removed_files": (index_result or {}).get("removed_files", []),
+                    "indexed_files": (index_result or {}).get("indexed_files", 0),
+                    "nodes": (index_result or {}).get("nodes", 0),
+                    "semantic_nodes": (index_result or {}).get("semantic_nodes", 0),
+                },
+                "papers": plan.get("papers", []),
+                "simulation": plan.get("simulation"),
+                "review_candidates": plan.get("reviews", []),
+            }
+            plan["artifacts"] = {
+                "plan": plan.get("plan"),
+                "dashboard": plan.get("dashboard"),
+            }
+            state_plan = root / "学习路线" / "plans" / f"{plan['week']}.json"
+            if state_plan.exists():
+                state_plan.write_text(
+                    json.dumps(plan, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
             _print(plan)
-            eval_required = load_config(root)[0].get("weekly", {}).get("eval_required", True)
-            return 1 if eval_error and eval_required else 0
+            eval_required = bool(weekly_cfg.get("eval_required", True))
+            return 1 if weekly_status == "failed" and eval_required else 0
         if args.command == "progress":
             if args.progress_command == "list":
                 _print(list_progress(root))
@@ -246,8 +322,10 @@ def main(argv: list[str] | None = None) -> int:
                 _print(suggest_progress(root, accept=args.accept))
             elif args.progress_command == "confirm":
                 _print(confirm_progress(root, args.id, args.evidence))
-            else:
+            elif args.progress_command == "reject":
                 _print(reject_progress(root, args.id))
+            else:
+                _print(import_legacy_progress(root, accept=args.accept))
             return 0
         if args.command == "reading":
             if args.reading_command == "list":

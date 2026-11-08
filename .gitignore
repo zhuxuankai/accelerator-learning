@@ -50,6 +50,7 @@ __pycache__/
 *.tmp
 .venv/
 *.egg-info/
+node_modules/
 Thumbs.db
 desktop.ini
 ~$*

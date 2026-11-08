@@ -1,0 +1,6 @@
+interface:
+  display_name: "加速器学习驾驶舱"
+  short_description: "带页级出处的课程检索、论文规划与译本校对"
+  default_prompt: "Use $accelerator-study-copilot to answer an accelerator course question with page-level citations."
+policy:
+  allow_implicit_invocation: true

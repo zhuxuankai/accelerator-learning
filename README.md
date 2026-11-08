@@ -33,7 +33,10 @@ python -m venv .venv
 .\.venv\Scripts\python -m pip install -e ".[ocr]"
 ```
 
-首次建立向量索引时会下载默认模型 `intfloat/multilingual-e5-small`。模型和索引均为本地文件。
+首次建立向量索引时可以下载默认模型 `intfloat/multilingual-e5-small`。模型缓存存在后，
+后续查询默认 `local_files_only=True`，不会再访问网络。如果保留索引但删除了模型缓存，
+需要显式设置 `ACCKB_ALLOW_MODEL_DOWNLOAD=1` 重新下载，或在配置中启用
+`model.allow_download`。
 
 配置按以下顺序读取：
 
@@ -60,6 +63,7 @@ Copy-Item 学习路线/roadmap.example.json 学习路线/roadmap.json
 .\tools\run.ps1 progress list
 .\tools\run.ps1 progress suggest
 .\tools\run.ps1 progress confirm prog-xxxx --evidence "完成并提交作业"
+.\tools\run.ps1 progress import-legacy -DryRun
 .\tools\run.ps1 reading list
 .\tools\run.ps1 reading confirm paper-xxxx --evidence "读书笔记已归档"
 .\tools\run.ps1 papers -DryRun
@@ -91,6 +95,8 @@ Copy-Item 学习路线/roadmap.example.json 学习路线/roadmap.json
 没有索引、配置损坏或依赖缺失会返回非零退出码和修复命令。只有索引正常但确实没有匹配时，
 才返回 `status: no_match`。
 
+概念问题优先使用 hybrid；精确缩写、文件名、编号或术语可用 lexical，避免每次加载向量模型。
+
 ## 版本与 OCR
 
 支持的显式版本标记包括文件名末尾的 `0923`、`20260923`、`v2`、`第2版` 和数字修订号。
@@ -121,6 +127,8 @@ Chroma 的 HNSW 向量库不放在 OneDrive 同步目录中，而是放在
 
 `progress suggest` 只会生成来源为“推断”的候选；必须显式接受后才写入正式进度。
 `progress confirm` 和 `reading confirm` 必须提供证据。
+旧版 `进度追踪.csv` 只能通过 `progress import-legacy` 显式导入；即使旧行写着已完成，
+导入后也会变成“推断/待确认”，不会自动确认。
 
 ## 评测
 
@@ -140,12 +148,14 @@ Chroma 的 HNSW 向量库不放在 OneDrive 同步目录中，而是放在
 .\extensions\translation\translation.ps1 -List
 .\extensions\translation\translation.ps1 -Prepare "文献/example.pdf"
 .\extensions\translation\translation.ps1 -Audit
+.\extensions\translation\translation.ps1 -RenderCheck "文献/译文/example.zh.md"
 ```
 
 它单独安装依赖：
 
 ```powershell
 .\.venv\Scripts\python -m pip install -e ".[translation]"
+npm install
 ```
 
 ## 已知限制
@@ -155,6 +165,7 @@ Chroma 的 HNSW 向量库不放在 OneDrive 同步目录中，而是放在
 - DOCX 没有稳定的固定页码，定位到“正文”。
 - 论文自动抓取仍依赖外部开放 API，详细候选必须人工确认后再下载。
 - 人工审核的本地 held-out 集完成前，本项目只能声明为技术预览，不能声明达到特定检索指标。
+- `weekly status=degraded` 表示索引和计划已生成但质量门槛不可用；只有 `failed` 是维护或已审核评测失败。
 
 ## 贡献
 

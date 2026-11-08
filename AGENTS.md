@@ -7,7 +7,8 @@
 
 ## 检索问答
 
-1. 先运行 `pwsh tools/run.ps1 query "<问题>" -Mode hybrid`。
+1. 概念性和跨中英文问题先运行 `pwsh tools/run.ps1 query "<问题>" -Mode hybrid`；
+   明确文件名、缩写、编号或术语时使用 `-Mode lexical`，减少不必要的模型加载。
 2. 只根据返回节点作答，并给出 `rel_path + unit_label`。
 3. `diagnostics.warnings` 必须阅读。出现 `ambiguous` 时，不得声称某个版本一定最新；
    出现低质量 OCR 时，不得把 OCR 当公式原文。
@@ -25,6 +26,11 @@
 ## 每周维护
 
 运行 `pwsh tools/run.ps1 weekly`。它默认重建索引、执行可用评测、生成下周计划和看板。
+先检查返回的 `status`：
+
+- `ok`：维护和评测均通过；
+- `degraded`：维护完成但评测不可用，必须标为“技术预览”；命令正常退出；
+- `failed`：已审核评测未过门槛或维护失败，必须报告失败。
 汇报四件事：
 
 1. 新增或变更语料；
@@ -38,6 +44,7 @@
 ## 进度与阅读
 
 - `progress.csv`、`reading.csv` 和 `roadmap.json` 是个人数据，不提交公开仓库。
+- 旧版 `进度追踪.csv` 只能通过 `progress import-legacy` 显式迁移，导入项一律保留“推断”。
 - 来源为“推断”的记录不等于已完成。
 - 只有 `progress confirm` 或 `reading confirm` 带证据时才能改成完成。
 - 论文出现在计划中只表示“已安排”，不表示“已读”。
@@ -49,10 +56,11 @@
 
 ```powershell
 pwsh extensions/translation/translation.ps1 -Audit
+pwsh extensions/translation/translation.ps1 -RenderCheck "文献/译文/<file>.zh.md"
 ```
 
-审计必须零缺页、零占位符、公式可渲染。OCR 低质量页和抽取残缺公式必须显式标页码，
-不得猜测补全。
+审计必须零缺页、零占位符，Markdown+Math 实际解析零错误。`-Audit` 与 `-RenderCheck`
+都不能替代物理内容校对。OCR 低质量页和抽取残缺公式必须显式标页码，不得猜测补全。
 
 ## 公开仓库
 

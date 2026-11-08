@@ -121,6 +121,67 @@ def reject_progress(root: Path, item_id: str) -> dict[str, str]:
     raise CockpitError(f"找不到进度项：{item_id}")
 
 
+def import_legacy_progress(root: Path, *, accept: bool = False) -> dict[str, Any]:
+    paths = Paths.for_root(root)
+    legacy_path = paths.roadmap_dir / "进度追踪.csv"
+    if not legacy_path.exists():
+        raise CockpitError(f"找不到旧版进度文件：{legacy_path}")
+    with legacy_path.open("r", encoding="utf-8-sig", newline="") as handle:
+        legacy_rows = list(csv.DictReader(handle))
+    existing = list_progress(root)
+    by_id = {row["id"]: row for row in existing}
+    imported = []
+    skipped = 0
+    for raw in legacy_rows:
+        name = (raw.get("名称") or "").strip()
+        if not name:
+            continue
+        row_id = _stable_id(
+            "prog",
+            "|".join(
+                [
+                    (raw.get("关联课程") or "").strip(),
+                    name,
+                    (raw.get("类型") or "").strip(),
+                ]
+            ),
+        )
+        if row_id in by_id:
+            skipped += 1
+            continue
+        original_status = (raw.get("状态") or "未开始").strip()
+        safe_status = "待确认" if original_status in {"已完成", "完成"} else original_status
+        original_source = (raw.get("来源") or "").strip()
+        row = {
+            "id": row_id,
+            "类型": (raw.get("类型") or "").strip(),
+            "名称": name,
+            "关联课程": (raw.get("关联课程") or "").strip(),
+            "计划完成": (raw.get("计划完成") or "").strip(),
+            "状态": safe_status,
+            "来源": "推断",
+            "证据": (
+                f"旧版进度导入；原状态={original_status or '未填'}；"
+                f"原来源={original_source or '未填'}；需重新确认"
+            ),
+            "更新日期": date.today().isoformat(),
+            "备注": (raw.get("备注") or "").strip(),
+        }
+        imported.append(row)
+        by_id[row_id] = row
+    if accept and imported:
+        _write_csv(paths.progress_csv, PROGRESS_FIELDS, [*existing, *imported])
+    return {
+        "status": "imported" if accept else "dry_run",
+        "source": str(legacy_path),
+        "target": str(paths.progress_csv),
+        "imported_count": 0 if not accept else len(imported),
+        "candidate_count": len(imported),
+        "skipped_existing": skipped,
+        "rows": imported,
+    }
+
+
 def _paper_category(metadata: dict[str, Any]) -> str:
     source = str(metadata.get("source") or "").lower()
     title = str(metadata.get("title") or "").lower()
@@ -263,7 +324,13 @@ code{{background:#f3f3f3;padding:.1rem .3rem}}section{{margin:2rem 0}}</style>
     return str(path.relative_to(paths.root))
 
 
-def generate_weekly(root: Path, *, eval_result: dict[str, Any] | None) -> dict[str, Any]:
+def generate_weekly(
+    root: Path,
+    *,
+    eval_result: dict[str, Any] | None,
+    eval_error: str | None = None,
+    quality: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     root = Path(root).resolve()
     cfg, _, _ = load_config(root)
     paths = Paths.for_root(root)
@@ -274,7 +341,13 @@ def generate_weekly(root: Path, *, eval_result: dict[str, Any] | None) -> dict[s
     json_path = plan_dir / f"{next_monday.isoformat()}.json"
     markdown_path = plan_dir / f"{next_monday.isoformat()}.md"
     if json_path.exists() and markdown_path.exists():
-        return json.loads(json_path.read_text(encoding="utf-8"))
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+        payload["eval"] = eval_result
+        payload["eval_error"] = eval_error
+        payload["quality"] = quality
+        payload["plan"] = str(markdown_path.relative_to(root))
+        payload["dashboard"] = str((paths.roadmap_dir / "dashboard.html").relative_to(root))
+        return payload
 
     roadmap = _load_roadmap(paths)
     stage = _current_stage(roadmap, next_monday)
@@ -299,6 +372,8 @@ def generate_weekly(root: Path, *, eval_result: dict[str, Any] | None) -> dict[s
         "reviews": reviews,
         "simulation": simulation,
         "eval": eval_result,
+        "eval_error": eval_error,
+        "quality": quality,
     }
 
     paper_lines = [
@@ -315,10 +390,22 @@ def generate_weekly(root: Path, *, eval_result: dict[str, Any] | None) -> dict[s
         else "- 当前阶段没有未完成的仿真任务。"
     )
     eval_line = (
+        f"- 质量门槛：{quality['status']}；"
+        + (
+            "、".join(quality.get("failures", []))
+            if quality and quality.get("failures")
+            else "通过"
+        )
+        if quality
+        else "- 本次未运行评测。"
+    )
+    metric_line = (
         f"- {eval_result['suite']}/{eval_result['split']}，{eval_result['baseline']}："
         f"page hit@3={eval_result['page_hit@3']:.1%}，MRR@10={eval_result['mrr@10']:.3f}，"
         f"p95={eval_result['latency_p95_ms']} ms"
         if eval_result
+        else f"- 评测不可用：{eval_error}"
+        if eval_error
         else "- 本次未运行评测。"
     )
     markdown = "\n".join(
@@ -342,6 +429,7 @@ def generate_weekly(root: Path, *, eval_result: dict[str, Any] | None) -> dict[s
             "## 检索回归",
             "",
             eval_line,
+            metric_line,
             "",
         ]
     )

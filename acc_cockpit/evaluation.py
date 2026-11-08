@@ -110,3 +110,30 @@ def evaluate(
         else 0,
         "details": details,
     }
+
+
+def quality_gate(result: dict[str, Any], thresholds: dict[str, Any]) -> dict[str, Any]:
+    page_min = float(thresholds.get("page_hit_at_3", 0.8))
+    recall_min = float(thresholds.get("recall_at_50", 0.9))
+    empty_max = float(thresholds.get("empty_rate_max", 0.1))
+    failures = []
+    if float(result["page_hit@3"]) < page_min:
+        failures.append(f"page_hit@3 {result['page_hit@3']:.3f} < {page_min:.3f}")
+    if float(result["recall@50"]) < recall_min:
+        failures.append(f"recall@50 {result['recall@50']:.3f} < {recall_min:.3f}")
+    if float(result["empty_rate"]) > empty_max:
+        failures.append(f"empty_rate {result['empty_rate']:.3f} > {empty_max:.3f}")
+    return {
+        "status": "failed" if failures else "passed",
+        "thresholds": {
+            "page_hit_at_3": page_min,
+            "recall_at_50": recall_min,
+            "empty_rate_max": empty_max,
+        },
+        "metrics": {
+            "page_hit@3": result["page_hit@3"],
+            "recall@50": result["recall@50"],
+            "empty_rate": result["empty_rate"],
+        },
+        "failures": failures,
+    }

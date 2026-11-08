@@ -25,6 +25,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "candidate_k": 50,
         "max_chunks_per_doc": 3,
     },
+    "model": {
+        "allow_download": False,
+    },
     "ocr": {
         "enabled": True,
         "dpi": 220,
@@ -47,6 +50,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "eval_suite": "local",
         "eval_split": "dev",
         "max_review_candidates": 1,
+        "thresholds": {
+            "page_hit_at_3": 0.8,
+            "recall_at_50": 0.9,
+            "empty_rate_max": 0.1,
+        },
     },
 }
 

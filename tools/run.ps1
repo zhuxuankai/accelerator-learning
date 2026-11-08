@@ -6,7 +6,7 @@
   run.ps1 query   "<问题>" [-Course <目录>] [-Kind slide|book|paper|doc] [-K 8] [-AllVersions] [-Mode hybrid]
   run.ps1 eval    [-Suite demo|local] [-Split dev|heldout] [-Baseline lexical|vector|hybrid]
   run.ps1 weekly  [-NoIndex] [-SkipEval]
-  run.ps1 progress list|suggest|confirm|reject ...
+  run.ps1 progress list|suggest|confirm|reject|import-legacy ...
   run.ps1 reading  list|confirm ...
   run.ps1 papers  [-DryRun|-Write]
   run.ps1 status
@@ -50,6 +50,7 @@ $switches = @{
   query    = @{ '-Course' = '--course'; '-Kind' = '--kind'; '-K' = '-k'; '-AllVersions' = '--all-versions'; '-Mode' = '--mode'; '-MockEmbedding' = '--mock-embedding' }
   eval     = @{ '-Suite' = '--suite'; '-Split' = '--split'; '-Baseline' = '--baseline'; '-MockEmbedding' = '--mock-embedding' }
   weekly   = @{ '-NoIndex' = '--no-index'; '-SkipEval' = '--skip-eval'; '-MockEmbedding' = '--mock-embedding' }
+  progress = @{ '-DryRun' = '--dry-run'; '-Accept' = '--accept' }
   papers   = @{ '-DryRun' = '--dry-run'; '-Write' = '--write' }
 }
 

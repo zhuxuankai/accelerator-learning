@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import CockpitError, Paths, load_config
-from .embedding import build_embedding_model
+from .embedding import build_embedding_model, model_download_allowed
 from .extract import discover_files, dump_json, extract_file, sha1_file, units_from_json
 from .versions import analyze_versions, node_document_id
 
@@ -115,7 +115,14 @@ def _make_nodes(
     return nodes, flat
 
 
-def _build_chroma(nodes: list[Any], paths: Paths, cfg: dict[str, Any], mock_embedding: bool) -> int:
+def _build_chroma(
+    nodes: list[Any],
+    paths: Paths,
+    cfg: dict[str, Any],
+    mock_embedding: bool,
+    *,
+    first_build: bool,
+) -> int:
     semantic_nodes = [
         node
         for node in nodes
@@ -132,7 +139,11 @@ def _build_chroma(nodes: list[Any], paths: Paths, cfg: dict[str, Any], mock_embe
     client = chromadb.PersistentClient(path=str(paths.chroma_dir))
     collection_name = "acc-cockpit-v2"
     collection = client.get_or_create_collection(collection_name, metadata={"hnsw:space": "cosine"})
-    embed_model = build_embedding_model(cfg, mock=mock_embedding)
+    embed_model = build_embedding_model(
+        cfg,
+        mock=mock_embedding,
+        allow_download=first_build or model_download_allowed(cfg),
+    )
     if semantic_nodes:
         for start in range(0, len(semantic_nodes), 64):
             batch = semantic_nodes[start : start + 64]
@@ -188,6 +199,8 @@ def build_index(
 
     files: dict[str, dict] = {}
     changed: list[str] = []
+    added: list[str] = []
+    updated: list[str] = []
     removed: list[str] = []
     selected_rels = {path.relative_to(root).as_posix() for path in selected}
     for rel_path, record in old_files.items():
@@ -203,6 +216,7 @@ def build_index(
         files[rel_path] = record
         if was_changed:
             changed.append(rel_path)
+            (added if old_files.get(rel_path) is None else updated).append(rel_path)
 
     if (
         not full
@@ -217,6 +231,8 @@ def build_index(
             "status": "no_changes",
             "indexed_files": len(files),
             "changed_files": [],
+            "added_files": [],
+            "updated_files": [],
             "removed_files": [],
             "nodes": previous.get("node_count", 0),
             "semantic_nodes": previous.get("semantic_node_count", 0),
@@ -230,7 +246,13 @@ def build_index(
         for rel, rec in files.items()
     )
     nodes, flat = _make_nodes(files, decisions, cfg)
-    semantic_count = _build_chroma(nodes, paths, cfg, mock_embedding)
+    semantic_count = _build_chroma(
+        nodes,
+        paths,
+        cfg,
+        mock_embedding,
+        first_build=not paths.state_file.exists(),
+    )
     warnings = sorted(
         {
             decision.warning
@@ -246,6 +268,8 @@ def build_index(
         "embedding_model": embedding_model,
         "files": files,
         "changed": changed,
+        "added": added,
+        "updated": updated,
         "removed": removed,
         "node_count": len(flat),
         "semantic_node_count": semantic_count,
@@ -257,6 +281,8 @@ def build_index(
         "status": "ok",
         "indexed_files": len(files),
         "changed_files": changed,
+        "added_files": added,
+        "updated_files": updated,
         "removed_files": removed,
         "nodes": len(flat),
         "semantic_nodes": semantic_count,
